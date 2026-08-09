@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.tsbuild/
+*.tsbuildinfo
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+coverage/
+
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# Licence signing keys must never be committed.
+*.private.pem
+private-key.*

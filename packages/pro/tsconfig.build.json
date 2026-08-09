@@ -1,0 +1,11 @@
+{
+  // See packages/core/tsconfig.build.json — same reasoning.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"],
+  "references": []
+}
