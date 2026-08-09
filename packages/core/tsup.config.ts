@@ -8,8 +8,12 @@ export default defineConfig({
     // it is not importable by consumers. Folds into `index` at M4, when
     // emission wires the writer up.
     pdf: "src/pdf/index.ts",
+    fonts: "src/fonts/index.ts",
   },
   tsconfig: "tsconfig.build.json",
+  // Each entry must be self-contained. With splitting on, shared code moves to
+  // a common chunk and the per-entry size numbers stop measuring anything.
+  splitting: false,
   // ESM + CJS for bundlers/Node tooling, IIFE for a plain <script> tag.
   format: ["esm", "cjs", "iife"],
   globalName: "PkgCore",

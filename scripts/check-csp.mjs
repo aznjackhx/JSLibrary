@@ -21,6 +21,7 @@ const BUNDLES = [
   "packages/core/dist/index.cjs",
   "packages/core/dist/index.global.js",
   "packages/core/dist/pdf.js",
+  "packages/core/dist/fonts.js",
 ];
 
 const FORBIDDEN = [

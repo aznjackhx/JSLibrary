@@ -27,6 +27,9 @@ const TARGETS = [
   { label: "@pkg/core esm", file: "packages/core/dist/index.js" },
   { label: "@pkg/core iife", file: "packages/core/dist/index.global.js" },
   { label: "@pkg/core pdf", file: "packages/core/dist/pdf.js" },
+  // fonts pulls in pdf and pako, so this is the running total for everything
+  // the engine has so far.
+  { label: "@pkg/core fonts", file: "packages/core/dist/fonts.js" },
 ];
 
 function gzipBytes(path) {

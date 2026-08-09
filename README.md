@@ -7,10 +7,11 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 1 — PDF primitives.** The writer emits valid PDFs
-> (validated with `qpdf --check` and pdf.js), but `render()` throws
-> `NotImplementedError` until emission lands in M4. See [`CLAUDE.md`](./CLAUDE.md)
-> for the full brief and milestone plan.
+> **Status: Milestone 2 — font pipeline.** The writer emits valid PDFs with
+> subset, embedded fonts and searchable text (validated with `qpdf --check`,
+> pdf.js and fontkit), but `render()` throws `NotImplementedError` until
+> emission lands in M4. See [`CLAUDE.md`](./CLAUDE.md) for the full brief and
+> milestone plan.
 
 ## Approach
 
@@ -35,6 +36,22 @@ defeats the purpose.
 | --- | --- | --- |
 | `@pkg/core` | AGPL-3.0 or commercial | Measurement, fragmentation, font subsetting, page furniture, links, bookmarks, SVG |
 | `@pkg/pro` | Commercial only | PDF/A, PDF/UA, AcroForms, signatures, encryption, print production, merge, streaming writer |
+
+## Font support
+
+Fonts are parsed and subset in-house rather than with fontkit, which bundles to
+146 KB gzip — more than twice this library's entire 60 KB budget.
+
+| Format | Status |
+| --- | --- |
+| TrueType (`glyf` outlines), `.ttf` | Supported |
+| OpenType with TrueType outlines | Supported |
+| WOFF 1 | Supported (zlib, via pako) |
+| OpenType with CFF outlines | Rejected with an explicit message |
+| WOFF 2 | Rejected: needs a Brotli decoder, which alone exceeds the bundle budget |
+
+Subset fonts are embedded as `CIDFontType2` with `Identity-H` encoding and a
+`ToUnicode` CMap, so the full Unicode range works and extracted text round-trips.
 
 ## Development
 
