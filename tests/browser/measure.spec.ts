@@ -169,20 +169,28 @@ test.describe("line extraction", () => {
 
     expect(clusters.length).toBeGreaterThan(2);
 
-    // Uniformity is the property of a monospaced font that has to survive
-    // extraction; the exact advance is the engine's business. It must also be
-    // in the right neighbourhood — a wildly different value would mean the
-    // embedded font never loaded and a fallback was measured instead.
-    const first = (clusters[1]?.x as number) - (clusters[0]?.x as number);
-    for (let i = 1; i < clusters.length; i += 1) {
-      const advance =
-        (clusters[i] as (typeof clusters)[number]).x -
-        (clusters[i - 1] as (typeof clusters)[number]).x;
-      expect(advance).toBeCloseTo(first, 1);
+    // Advances are not necessarily equal, even in a monospaced font. WebKit
+    // snaps each glyph position to a whole pixel, so a true advance of 9.633
+    // comes back as 10, 9, 10, 10, 9 — the sequence averages out to the real
+    // value rather than repeating it. Chrome does the same at some versions and
+    // not others.
+    //
+    // So the invariant is not "every advance is identical" but "every advance
+    // is within a pixel of the mean, and the mean is the font's advance". That
+    // holds whether or not the engine snaps, and still catches a fallback font
+    // being measured instead of the embedded one.
+    const advances = clusters
+      .slice(1)
+      .map((cluster, index) => cluster.x - (clusters[index] as (typeof clusters)[number]).x);
+
+    const mean = advances.reduce((total, value) => total + value, 0) / advances.length;
+
+    for (const advance of advances) {
+      expect(Math.abs(advance - mean)).toBeLessThanOrEqual(1);
     }
 
-    expect(first).toBeGreaterThan(CHAR_WIDTH - 1);
-    expect(first).toBeLessThan(CHAR_WIDTH + 1);
+    expect(mean).toBeGreaterThan(CHAR_WIDTH - 0.5);
+    expect(mean).toBeLessThan(CHAR_WIDTH + 0.5);
   });
 
   test("omits clusters when precise positioning is off", async ({ page }) => {
@@ -315,6 +323,25 @@ test.describe("tree shape", () => {
 
     expect(picture?.rect.width).toBe(120);
     expect(picture?.rect.height).toBe(60);
+  });
+
+  test("fixture image actually decodes", async ({ page }) => {
+    // A corrupt fixture image is indistinguishable from a measurement bug: the
+    // element falls back to alt text and measures as a few characters wide.
+    // Chromium renders a PNG with a bad IDAT checksum anyway; Firefox does not.
+    // Assert the image itself before trusting anything measured about it.
+    const decoded = await page.evaluate(async () => {
+      const image = document.querySelector("#picture") as HTMLImageElement;
+      try {
+        await image.decode();
+      } catch {
+        return { ok: false, width: 0 };
+      }
+      return { ok: true, width: image.naturalWidth };
+    });
+
+    expect(decoded.ok).toBe(true);
+    expect(decoded.width).toBeGreaterThan(0);
   });
 
   test("sizes an image from the original when the clone is still loading", async ({ page }) => {

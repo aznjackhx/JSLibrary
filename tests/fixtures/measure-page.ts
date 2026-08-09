@@ -25,11 +25,15 @@ export function fontDataUrl(): string {
 }
 
 /**
- * A 2×1 PNG, red and blue. Small enough to inline, large enough to have a
- * measurable box once scaled.
+ * A 2×1 PNG, red and blue.
+ *
+ * Generated, not written by hand. An earlier version of this constant had a bad
+ * IDAT checksum: Chromium rendered it regardless, Firefox correctly refused and
+ * laid out the alt text instead, and the resulting 38.5px measurement looked
+ * exactly like a bug in the measurement code.
  */
 export const TEST_IMAGE =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAFElEQVR4nGP8z8DwnwEJMKFyaCkBAI0ZAxeXbecTAAAAAElFTkSuQmCC";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mO4Iyf3X87mzn8AEU0ETf5ImaAAAAAASUVORK5CYII=";
 
 /** Width the fixture is measured at, in CSS pixels. */
 export const MEASURE_WIDTH = 400;

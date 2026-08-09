@@ -31,6 +31,19 @@ type MeasureModule = typeof import("@pkg/core/measure/index.js");
 export async function openMeasurePage(page: Page): Promise<void> {
   await page.setContent(measurePageHtml(), { waitUntil: "load" });
   await page.evaluate(() => document.fonts.ready);
+  // Measurement reads intrinsic sizes and pixels from the page's images, so
+  // they have to be decoded first — render() does the same internally.
+  await page.evaluate(async () => {
+    await Promise.all(
+      [...document.images].map(async (image) => {
+        try {
+          await image.decode();
+        } catch {
+          // Left to the fixture-image test to report.
+        }
+      }),
+    );
+  });
   await page.addScriptTag({ content: readFileSync(MEASURE_BUNDLE, "utf8") });
 }
 

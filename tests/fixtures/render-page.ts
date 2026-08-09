@@ -29,9 +29,12 @@ export function renderFontDataUrl(): string {
   return cachedFontUrl;
 }
 
-/** A 4×4 PNG with an alpha gradient, to exercise the soft mask path. */
+/**
+ * A 4×4 PNG with partly transparent columns, to exercise the soft mask path.
+ * Generated rather than hand-written — see the note in measure-page.ts.
+ */
 export const ALPHA_IMAGE =
-  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAKklEQVR4nGP8z8Dwn4GBgYGRAQ0wYRfAKcHIwMDwH5sEE07jsUpQRQIAO4UGAQrEAaAAAAAASUVORK5CYII=";
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAHUlEQVR42mO4Iyf3X87mzn+5BQELPpzQcGAgXQAATUwgabqawlUAAAAASUVORK5CYII=";
 
 /**
  * Page content box width, in CSS pixels.
