@@ -74,13 +74,27 @@ export class MeasurementContainer {
   readonly element: HTMLElement;
   readonly content: HTMLElement;
   readonly width: number;
+  /**
+   * Clone image to the original it was copied from.
+   *
+   * A cloned `<img>` starts its load again from scratch, and until it finishes
+   * the browser has no intrinsic size for it. The original in the live document
+   * has already loaded, so it is the one to read pixels and dimensions from.
+   */
+  readonly sourceImages: ReadonlyMap<Element, HTMLImageElement>;
 
   #destroyed = false;
 
-  private constructor(element: HTMLElement, content: HTMLElement, width: number) {
+  private constructor(
+    element: HTMLElement,
+    content: HTMLElement,
+    width: number,
+    sourceImages: ReadonlyMap<Element, HTMLImageElement>,
+  ) {
     this.element = element;
     this.content = content;
     this.width = width;
+    this.sourceImages = sourceImages;
   }
 
   static create(source: Element, options: MeasurementContainerOptions): MeasurementContainer {
@@ -124,10 +138,12 @@ export class MeasurementContainer {
     // every measurement by an amount the page geometry does not account for.
     Object.assign(clone.style, { margin: "0", width: "100%", boxSizing: "border-box" });
 
+    const sourceImages = pairImages(source, clone);
+
     container.append(clone);
     doc.body.append(container);
 
-    return new MeasurementContainer(container, clone, options.width);
+    return new MeasurementContainer(container, clone, options.width, sourceImages);
   }
 
   /** Container-relative origin, used to make every rect relative to the page. */
@@ -146,6 +162,49 @@ export class MeasurementContainer {
     this.#destroyed = true;
     this.element.remove();
   }
+}
+
+/**
+ * Pair each cloned image with the original it came from, and give the clone an
+ * intrinsic size to lay out with.
+ *
+ * Cloning an `<img>` restarts its load. Until that finishes the element has no
+ * intrinsic size, and an engine that has not yet decoded it lays out the alt
+ * text instead — Firefox measured a 120px image as 38px of alt text, and
+ * captured no pixels at all, because the clone was still loading. Copying the
+ * original's decoded dimensions onto the clone's `width`/`height` attributes
+ * gives layout the box immediately; CSS still overrides them, exactly as it
+ * would for the original.
+ *
+ * The two trees are structurally identical, so document order pairs them.
+ */
+function pairImages(source: Element, clone: Element): Map<Element, HTMLImageElement> {
+  const collect = (root: Element): Element[] => {
+    const images = [...root.querySelectorAll("img")];
+    return root.tagName === "IMG" ? [root, ...images] : images;
+  };
+
+  const sources = collect(source);
+  const clones = collect(clone);
+  const pairs = new Map<Element, HTMLImageElement>();
+
+  for (const [index, cloned] of clones.entries()) {
+    const original = sources[index];
+    if (!(original instanceof HTMLImageElement) || !(cloned instanceof HTMLImageElement)) {
+      continue;
+    }
+
+    pairs.set(cloned, original);
+
+    if (original.naturalWidth > 0 && !cloned.hasAttribute("width")) {
+      cloned.setAttribute("width", String(original.naturalWidth));
+    }
+    if (original.naturalHeight > 0 && !cloned.hasAttribute("height")) {
+      cloned.setAttribute("height", String(original.naturalHeight));
+    }
+  }
+
+  return pairs;
 }
 
 /**

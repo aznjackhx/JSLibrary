@@ -21,6 +21,11 @@ export interface WalkOptions {
    * the DOM is the only place these can be read from.
    */
   readonly images: Map<string, CapturedImage>;
+  /**
+   * Clone image to the loaded original. A cloned image may still be decoding,
+   * and reading pixels from it would yield nothing.
+   */
+  readonly sourceImages: ReadonlyMap<Element, HTMLImageElement>;
 }
 
 /** Elements that never contribute to output. */
@@ -114,7 +119,8 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
   // left to read from.
   let imageRef: string | undefined;
   if (image) {
-    const captured = captureImage(image);
+    // Read from the original where one exists: the clone may still be loading.
+    const captured = captureImage(options.sourceImages.get(element) ?? image);
     if (captured) {
       imageRef = `image-${options.images.size + 1}`;
       options.images.set(imageRef, captured);

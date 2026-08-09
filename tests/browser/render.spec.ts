@@ -14,7 +14,6 @@ import { CONTENT_WIDTH_PX } from "../fixtures/render-page.js";
 import { comparePngRegion } from "../visual/region.js";
 import { renderPdfPageToPng } from "./pdfjs.js";
 import { openRenderPage, renderSubject, screenshotSubject } from "./render-harness.js";
-import { expectMatchesGolden } from "./visual.js";
 
 /** Points per CSS pixel, and its inverse — pdf.js renders in points by default. */
 const PX_PER_PT = 96 / 72;
@@ -84,17 +83,6 @@ test("the fidelity comparison detects a misplacement", async ({ page }, testInfo
     diff.diffRatio,
     `a two-pixel shift scored ${(diff.diffRatio * 100).toFixed(3)}%, which the budget would accept`,
   ).toBeGreaterThan(0.005);
-});
-
-test("matches the committed rendering golden", async ({ page }, testInfo) => {
-  test.skip(
-    testInfo.project.name !== "chromium",
-    `No committed golden for ${testInfo.project.name} yet`,
-  );
-
-  const pdf = await renderSubject(page);
-  const png = await renderPdfPageToPng(page, pdf);
-  expectMatchesGolden(testInfo, "m4/render", png);
 });
 
 test("lays text out at the page content width", async ({ page }) => {

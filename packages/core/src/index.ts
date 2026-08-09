@@ -62,6 +62,12 @@ export async function render(
   const resolved = resolveOptions(options);
   const registry = buildRegistry(resolved.fonts);
 
+  // Measurement reads pixels and intrinsic sizes from the page's own images, so
+  // they have to be decoded first. An image that is still loading has no
+  // intrinsic size, and a browser lays out its alt text instead — which is how
+  // a 120px image measures as 38px of text.
+  await decodeImages(element);
+
   const { content } = resolved.page;
 
   // The container is sized to the page's content box, so the browser breaks
@@ -100,6 +106,31 @@ export async function render(
   context.finish();
 
   return pdf.toBytes();
+}
+
+/**
+ * Wait for the images inside an element to finish decoding.
+ *
+ * A broken image rejects rather than resolving; that is not fatal — it is
+ * skipped and the rest of the document still renders — so failures are
+ * swallowed deliberately.
+ */
+async function decodeImages(element: Element): Promise<void> {
+  const images = [
+    ...(element instanceof HTMLImageElement ? [element] : []),
+    ...element.querySelectorAll("img"),
+  ];
+
+  await Promise.all(
+    images.map(async (image) => {
+      if (image.complete && image.naturalWidth > 0) return;
+      try {
+        await image.decode();
+      } catch {
+        // Broken or cross-origin without CORS: rendered without it.
+      }
+    }),
+  );
 }
 
 function buildRegistry(fonts: RenderOptions["fonts"]): FontRegistry {

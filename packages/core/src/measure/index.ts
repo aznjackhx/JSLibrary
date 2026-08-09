@@ -63,6 +63,7 @@ export function measure(element: Element, options: MeasureOptions): MeasureResul
       probe,
       precise: options.precise ?? true,
       images,
+      sourceImages: container.sourceImages,
     });
 
     if (!root) {

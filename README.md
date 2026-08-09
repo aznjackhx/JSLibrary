@@ -89,13 +89,27 @@ The PDF conformance test needs `qpdf` on PATH (`apt-get install qpdf`). It skips
 locally when absent and fails when absent in CI — validating output against an
 independent implementation is not optional there.
 
-Golden images and geometry goldens currently exist for Chromium only; those
-comparisons skip on Firefox and WebKit until goldens are generated on a machine
-with them installed. Structural assertions run on all three.
+### What may be a golden
 
-Visual regression goldens live in `tests/browser/goldens`, one set per browser.
-Refresh with `UPDATE_GOLDENS=1 pnpm test:browser` and review the diff before
-committing — an updated golden asserts the new rendering is correct.
+Goldens live in `tests/browser/goldens`, one set per browser. Refresh with
+`UPDATE_GOLDENS=1 pnpm test:browser` and review the diff before committing — an
+updated golden asserts the new rendering is correct.
+
+Only output that does **not** depend on browser text metrics may be committed as
+a golden. Engines disagree about glyph advances on identical content — one
+Chrome build reports 9.633px where another snaps to 10 — so a golden over
+measured geometry records the machine that produced it rather than anything
+about this code.
+
+Everything that does depend on layout is verified within a single environment
+instead:
+
+| Property | How it is checked |
+| --- | --- |
+| Measurement is repeatable | Same input measured repeatedly, across page loads and contexts |
+| Measurement is sane | Structural invariants: baselines inside line boxes, clusters ordered, content box inside border box |
+| Output matches the browser | The rendered PDF is diffed against that same browser's screenshot |
+| PDF construction is stable | Pixel goldens, for output built without any browser layout |
 
 ## License
 

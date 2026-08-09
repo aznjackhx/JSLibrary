@@ -109,14 +109,29 @@ test.describe("line extraction", () => {
     }
   });
 
-  test("measures a monospaced line to a width arithmetic predicts", async ({ page }) => {
-    const measured = await measureSubject(page);
+  test("measures a monospaced line as its character count times one advance", async ({ page }) => {
+    const measured = await measureSubject(page, { precise: true });
     const [text] = textNodesOf(findById(measured.root, "after-break") as never);
     const line = text?.lines[0];
 
     expect(line?.text).toBe("After a forced break.");
-    // Monospaced: the line is exactly its character count times the advance.
-    expect(line?.rect.width).toBeCloseTo("After a forced break.".length * CHAR_WIDTH, 1);
+
+    // Deliberately not compared against a hard-coded advance. Engines are free
+    // to snap glyph positions to whole pixels — CI's Chrome reports 10px where
+    // the font's own advance is 9.633 — and asserting the font's number tests
+    // the browser's rounding policy rather than our extraction. What must hold
+    // is that the line is exactly as wide as its glyphs, whatever the engine
+    // decided those are.
+    // Derived from the clusters themselves rather than multiplied out from one
+    // advance: cluster positions are rounded, and multiplying a rounded advance
+    // by twenty-one characters accumulates the rounding into a real error.
+    const clusters = line?.clusters ?? [];
+    const first = clusters[0];
+    const last = clusters[clusters.length - 1];
+
+    expect(clusters).toHaveLength("After a forced break.".length);
+    const span = (last?.x as number) + (last?.width as number) - (first?.x as number);
+    expect(line?.rect.width).toBeCloseTo(span, 1);
   });
 
   test("keeps combining sequences together as one cluster", async ({ page }) => {
@@ -147,17 +162,27 @@ test.describe("line extraction", () => {
     }
   });
 
-  test("advances monospaced clusters by exactly one character width", async ({ page }) => {
+  test("advances every monospaced cluster by the same amount", async ({ page }) => {
     const measured = await measureSubject(page, { precise: true });
     const [text] = textNodesOf(findById(measured.root, "after-break") as never);
     const clusters = text?.lines[0]?.clusters ?? [];
 
+    expect(clusters.length).toBeGreaterThan(2);
+
+    // Uniformity is the property of a monospaced font that has to survive
+    // extraction; the exact advance is the engine's business. It must also be
+    // in the right neighbourhood — a wildly different value would mean the
+    // embedded font never loaded and a fallback was measured instead.
+    const first = (clusters[1]?.x as number) - (clusters[0]?.x as number);
     for (let i = 1; i < clusters.length; i += 1) {
       const advance =
         (clusters[i] as (typeof clusters)[number]).x -
         (clusters[i - 1] as (typeof clusters)[number]).x;
-      expect(advance).toBeCloseTo(CHAR_WIDTH, 1);
+      expect(advance).toBeCloseTo(first, 1);
     }
+
+    expect(first).toBeGreaterThan(CHAR_WIDTH - 1);
+    expect(first).toBeLessThan(CHAR_WIDTH + 1);
   });
 
   test("omits clusters when precise positioning is off", async ({ page }) => {
@@ -214,13 +239,39 @@ test.describe("style capture", () => {
     expect(card?.style.padding).toEqual([8, 10, 8, 10]);
   });
 
-  test("captures fragmentation hints", async ({ page }) => {
+  test("captures break hints", async ({ page }) => {
     const measured = await measureSubject(page);
 
     expect(findById(measured.root, "atomic")?.style.breakInside).toBe("avoid");
     expect(findById(measured.root, "after-break")?.style.breakBefore).toBe("page");
-    expect(findById(measured.root, "wrapping")?.style.orphans).toBe(3);
-    expect(findById(measured.root, "wrapping")?.style.widows).toBe(4);
+  });
+
+  test("captures orphans and widows where the engine exposes them", async ({ page }) => {
+    // Firefox implements neither property, so getComputedStyle reports nothing
+    // and capture falls back to the CSS default of 2. That fallback is correct
+    // behaviour, not a bug to assert around — but fragmentation in M5 needs the
+    // author's real values, so an engine that hides them will need the numbers
+    // supplied through options instead.
+    const supported = await page.evaluate(() => {
+      const probe = document.createElement("p");
+      probe.style.setProperty("orphans", "3");
+      document.body.append(probe);
+      const value = getComputedStyle(probe).getPropertyValue("orphans");
+      probe.remove();
+      return value.trim() !== "";
+    });
+
+    const measured = await measureSubject(page);
+    const paragraph = findById(measured.root, "wrapping");
+
+    if (supported) {
+      expect(paragraph?.style.orphans).toBe(3);
+      expect(paragraph?.style.widows).toBe(4);
+    } else {
+      // The spec default, which is what an unsupported property must yield.
+      expect(paragraph?.style.orphans).toBe(2);
+      expect(paragraph?.style.widows).toBe(2);
+    }
   });
 
   test("parses alpha colours", async ({ page }) => {
@@ -264,6 +315,28 @@ test.describe("tree shape", () => {
 
     expect(picture?.rect.width).toBe(120);
     expect(picture?.rect.height).toBe(60);
+  });
+
+  test("sizes an image from the original when the clone is still loading", async ({ page }) => {
+    // Cloning an <img> restarts its load, and an engine that has not decoded it
+    // yet lays out the alt text instead. Firefox did exactly that: a 120px
+    // image measured 38.5px, the width of four characters of alt text. The
+    // clone now inherits the original's intrinsic size, so layout has a box
+    // immediately.
+    const intrinsic = await page.evaluate(() => {
+      const clone = (document.querySelector("#picture") as HTMLImageElement).cloneNode(
+        true,
+      ) as HTMLImageElement;
+      // A fresh clone, before anything has had a chance to decode it.
+      return { width: clone.naturalWidth, complete: clone.complete };
+    });
+
+    const measured = await measureSubject(page);
+    const picture = findById(measured.root, "picture");
+
+    // Whatever the clone's own load state was, the measurement is right.
+    expect(picture?.rect.width).toBe(120);
+    expect(typeof intrinsic.width).toBe("number");
   });
 
   test("measures table cells as boxes inside the table", async ({ page }) => {
