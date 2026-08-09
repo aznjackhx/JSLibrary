@@ -8,7 +8,8 @@
 import { BaselineProbe } from "./baseline.js";
 import { MeasurementContainer } from "./container.js";
 import { round } from "./styles.js";
-import type { MeasuredDocument } from "./types.js";
+import type { CapturedImage } from "./images.js";
+import type { MeasureResult } from "./types.js";
 import { walkElement } from "./walk.js";
 
 export { BaselineProbe } from "./baseline.js";
@@ -19,6 +20,12 @@ export {
   withMeasurementContainer,
 } from "./container.js";
 export type { MeasurementContainerOptions } from "./container.js";
+export {
+  captureImage,
+  decodeDataUrl,
+  jpegComponentCount,
+} from "./images.js";
+export type { CapturedImage } from "./images.js";
 export { clusterSpans, measureTextNode } from "./lines.js";
 export type { LineMeasurementOptions } from "./lines.js";
 export { captureStyle, isVisuallyEmpty, parseColor, parsePx, round } from "./styles.js";
@@ -43,17 +50,19 @@ export interface MeasureOptions {
  * structure with no live DOM references — nothing downstream can accidentally
  * depend on the document still being in the state it was measured in.
  */
-export function measure(element: Element, options: MeasureOptions): MeasuredDocument {
+export function measure(element: Element, options: MeasureOptions): MeasureResult {
   const container = MeasurementContainer.create(element, { width: options.width });
 
   try {
     const origin = container.origin;
     const probe = new BaselineProbe(container.element);
+    const images = new Map<string, CapturedImage>();
 
     const root = walkElement(container.content, {
       origin,
       probe,
       precise: options.precise ?? true,
+      images,
     });
 
     if (!root) {
@@ -61,9 +70,12 @@ export function measure(element: Element, options: MeasureOptions): MeasuredDocu
     }
 
     return {
-      contentWidth: round(options.width),
-      contentHeight: round(container.contentHeight),
-      root,
+      document: {
+        contentWidth: round(options.width),
+        contentHeight: round(container.contentHeight),
+        root,
+      },
+      images,
     };
   } finally {
     container.destroy();

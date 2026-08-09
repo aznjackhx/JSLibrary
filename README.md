@@ -7,11 +7,11 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 3 — DOM measurement.** The writer emits valid PDFs with
-> subset, embedded fonts, and the measurement stage extracts stable geometry
-> from a real browser. `render()` still throws `NotImplementedError` until
-> emission joins the two in M4. See [`CLAUDE.md`](./CLAUDE.md) for the full
-> brief and milestone plan.
+> **Status: Milestone 4 — emission.** `render()` works end to end for a single
+> page: measured DOM in, vector PDF out, verified against the browser's own
+> rendering within a 0.5% pixel diff. Fragmentation across pages lands in M5, so
+> content taller than one page is not yet split. See [`CLAUDE.md`](./CLAUDE.md)
+> for the full brief and milestone plan.
 
 ## Approach
 
@@ -29,6 +29,22 @@ do for you — **fragmentation policy** and **PDF emission**:
 
 Browser-only by design. Node support would require headless Chrome, which
 defeats the purpose.
+
+## Usage
+
+```ts
+import { render } from "@pkg/core";
+
+const pdf = await render(document.querySelector("#report"), {
+  pageSize: "Letter",
+  margins: "0.5in",
+  fonts: [{ family: "Inter", data: interRegularBytes }],
+});
+```
+
+Fonts are passed as bytes. The browser does not expose the bytes of a font it
+has loaded, and fetching them would break the no-network guarantee that makes
+this library work offline and behind a corporate firewall.
 
 ## Packages
 

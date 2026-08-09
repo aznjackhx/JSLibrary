@@ -39,17 +39,20 @@ test("computes page geometry in the browser", async ({ page }) => {
   expect(geometry.content).toEqual({ x: 72, y: 72, width: 468, height: 648 });
 });
 
-test("render rejects with NotImplementedError until M4 lands", async ({ page }) => {
-  const message = await page.evaluate(async () => {
+test("render reports missing fonts rather than producing a blank page", async ({ page }) => {
+  // The library makes no network requests, so it cannot fetch the fonts a page
+  // uses; they have to be supplied. Failing loudly beats emitting empty pages.
+  const result = await page.evaluate(async () => {
     try {
       await (window.PkgCore as CoreGlobal).render(document.body);
-      return "resolved";
+      return { name: "resolved", message: "" };
     } catch (error) {
-      return (error as Error).name;
+      return { name: (error as Error).name, message: (error as Error).message };
     }
   });
 
-  expect(message).toBe("NotImplementedError");
+  expect(result.name).toBe("RenderError");
+  expect(result.message).toContain("options.fonts");
 });
 
 test("runs under a strict CSP with no eval", async ({ page }) => {

@@ -3647,6 +3647,7 @@
               "y": 376
             },
             "id": "picture",
+            "imageRef": "image-1",
             "kind": "element",
             "rect": {
               "height": 60,

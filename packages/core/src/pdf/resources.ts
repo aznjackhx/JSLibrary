@@ -8,6 +8,14 @@
 
 import { PdfDict, type PdfRef, type PdfValue } from "./objects.js";
 
+/**
+ * Placeholder for a reserved-but-unbound resource.
+ *
+ * Serialising one would produce a page that references an object that does not
+ * exist, so `toDict` refuses rather than emitting a quietly broken PDF.
+ */
+const UNBOUND = Symbol("unbound resource");
+
 export type ResourceCategory =
   | "Font"
   | "XObject"
@@ -28,12 +36,12 @@ const NAME_PREFIX: Record<ResourceCategory, string> = {
 export class ResourceRegistry {
   /** category -> object key -> resource name */
   readonly #assigned = new Map<ResourceCategory, Map<string, string>>();
-  /** category -> resource name -> value */
-  readonly #entries = new Map<ResourceCategory, Map<string, PdfValue>>();
+  /** category -> resource name -> value, or UNBOUND while reserved */
+  readonly #entries = new Map<ResourceCategory, Map<string, PdfValue | typeof UNBOUND>>();
 
   #categoryMaps(category: ResourceCategory): {
     assigned: Map<string, string>;
-    entries: Map<string, PdfValue>;
+    entries: Map<string, PdfValue | typeof UNBOUND>;
   } {
     let assigned = this.#assigned.get(category);
     if (!assigned) {
@@ -64,6 +72,31 @@ export class ResourceRegistry {
     assigned.set(target.key, resourceName);
     entries.set(resourceName, target);
     return resourceName;
+  }
+
+  /**
+   * Reserve a resource name for an object that does not exist yet.
+   *
+   * Font programs cannot be written until every page has been emitted — a
+   * subset is only complete once all its glyphs are known — but content streams
+   * need the name while they are being built. The name is bound with `assign`
+   * before the document is serialised.
+   */
+  reserve(category: ResourceCategory): string {
+    const { entries } = this.#categoryMaps(category);
+    const resourceName = `${NAME_PREFIX[category]}${entries.size + 1}`;
+    entries.set(resourceName, UNBOUND);
+    return resourceName;
+  }
+
+  /** Bind a reserved name to its object. */
+  assign(category: ResourceCategory, resourceName: string, target: PdfRef): void {
+    const { assigned, entries } = this.#categoryMaps(category);
+    if (!entries.has(resourceName)) {
+      throw new RangeError(`Resource ${resourceName} was never reserved in ${category}`);
+    }
+    entries.set(resourceName, target);
+    assigned.set(target.key, resourceName);
   }
 
   /** Number of distinct objects registered in a category. */
@@ -100,7 +133,18 @@ export class ResourceRegistry {
     for (const category of categories) {
       const entries = this.#entries.get(category);
       if (!entries || entries.size === 0) continue;
-      resources.set(category, new PdfDict(entries));
+
+      const bound = new PdfDict();
+      for (const [resourceName, value] of entries) {
+        if (value === UNBOUND) {
+          throw new Error(
+            `Resource ${resourceName} in ${category} was reserved but never assigned; ` +
+              "the page would reference an object that does not exist",
+          );
+        }
+        bound.set(resourceName, value);
+      }
+      resources.set(category, bound);
     }
 
     return resources;

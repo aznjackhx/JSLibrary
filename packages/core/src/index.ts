@@ -5,13 +5,20 @@
  * other module in this package is internal and may change without notice.
  */
 
-import { NotImplementedError } from "./errors.js";
+import { EmissionContext, paintDocument } from "./emit/emit.js";
+import { NotImplementedError, RenderError } from "./errors.js";
+import { Font } from "./fonts/font.js";
+import { FontRegistry, type FontStyle } from "./fonts/resolve.js";
+import { measure } from "./measure/index.js";
 import { resolveOptions, type RenderOptions } from "./options.js";
+import { PdfDocument } from "./pdf/document.js";
+import { ptToPx } from "./units.js";
 
 export { RenderError, NotImplementedError } from "./errors.js";
 export { resolveOptions } from "./options.js";
 export type {
   DocumentMetadata,
+  FontInput,
   RenderOptions,
   ResolvedOptions,
   TextMode,
@@ -36,6 +43,11 @@ export { ptToPx, pxToPt, toPt } from "./units.js";
  * Pipeline: measure into a hidden container sized to the page content box,
  * fragment into page containers and let the browser reflow each, extract final
  * geometry, emit PDF operators.
+ *
+ * Fonts must be supplied as bytes. The browser will not hand back the bytes of
+ * a font it has already loaded, and fetching them ourselves would break the
+ * no-network guarantee that makes this library usable offline and behind a
+ * corporate firewall.
  */
 export async function render(
   element: Element,
@@ -47,10 +59,68 @@ export async function render(
     );
   }
 
-  // Validates and normalises now so option errors surface before any DOM work.
-  resolveOptions(options);
-  void element;
+  const resolved = resolveOptions(options);
+  const registry = buildRegistry(resolved.fonts);
 
-  // Landing across M1 (writer) through M4 (emission).
-  throw new NotImplementedError("render");
+  const { content } = resolved.page;
+
+  // The container is sized to the page's content box, so the browser breaks
+  // lines exactly where they will fall on the page.
+  const measured = measure(element, {
+    width: ptToPx(content.width),
+    precise: resolved.textMode === "precise",
+  });
+
+  const pdf = new PdfDocument({
+    info: {
+      title: resolved.metadata.title,
+      author: resolved.metadata.author,
+      subject: resolved.metadata.subject,
+      keywords: resolved.metadata.keywords,
+      creationDate: resolved.metadata.creationDate,
+    },
+  });
+
+  const context = new EmissionContext({
+    document: pdf,
+    registry,
+    images: measured.images,
+    precise: resolved.textMode === "precise",
+  });
+
+  // One page until fragmentation lands in M5. Content taller than the page is
+  // painted anyway rather than silently truncated, so the overflow is visible
+  // instead of mysterious.
+  const page = pdf.addPage({
+    width: resolved.page.size.width,
+    height: resolved.page.size.height,
+  });
+
+  paintDocument(page, measured.document, context, content);
+  context.finish();
+
+  return pdf.toBytes();
+}
+
+function buildRegistry(fonts: RenderOptions["fonts"]): FontRegistry {
+  const registry = new FontRegistry();
+
+  if (!fonts || fonts.length === 0) {
+    throw new RenderError(
+      "No fonts supplied. Pass the font files your content uses via options.fonts — " +
+        "the browser does not expose the bytes of fonts it has loaded, and this library " +
+        "makes no network requests.",
+    );
+  }
+
+  for (const font of fonts) {
+    registry.register({
+      family: font.family,
+      weight: font.weight ?? 400,
+      style: (font.style ?? "normal") as FontStyle,
+      font: Font.parse(font.data),
+    });
+  }
+
+  return registry;
 }

@@ -43,7 +43,9 @@ export async function measureSubject(
     ({ width, precise }) => {
       const subject = document.querySelector("#subject");
       if (!subject) throw new Error("fixture is missing #subject");
-      return (window.PkgCore as MeasureModule).measure(subject, { width, precise });
+      // Geometry only: image payloads live outside the tree and are not part
+      // of what these tests compare.
+      return (window.PkgCore as MeasureModule).measure(subject, { width, precise }).document;
     },
     { width: options.width ?? MEASURE_WIDTH, precise: options.precise ?? true },
   );

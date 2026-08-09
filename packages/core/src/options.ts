@@ -38,17 +38,35 @@ export interface DocumentMetadata {
   readonly creationDate?: Date;
 }
 
+/**
+ * A font file to make available for rendering.
+ *
+ * Bytes, not a URL: fetching would break the no-network guarantee, and the
+ * browser will not hand back the bytes of a font it has already loaded.
+ */
+export interface FontInput {
+  readonly family: string;
+  readonly data: Uint8Array;
+  /** CSS numeric weight. Defaults to 400. */
+  readonly weight?: number;
+  /** Defaults to `normal`. */
+  readonly style?: "normal" | "italic" | "oblique";
+}
+
 export interface RenderOptions {
   readonly pageSize?: PageSizeInput;
   readonly orientation?: Orientation;
   readonly margins?: MarginsInput;
   readonly textMode?: TextMode;
   readonly metadata?: DocumentMetadata;
+  /** Font files the content needs. Required: nothing can be drawn without one. */
+  readonly fonts?: readonly FontInput[];
 }
 
 export interface ResolvedOptions {
   readonly page: PageGeometry;
   readonly textMode: TextMode;
+  readonly fonts: readonly FontInput[];
   readonly metadata: {
     readonly title: string | undefined;
     readonly author: string | undefined;
@@ -65,6 +83,7 @@ export function resolveOptions(options: RenderOptions = {}): ResolvedOptions {
     page: pageGeometry(options.pageSize, options.orientation ?? "portrait", options.margins),
     // Precise is the default: correctness first, with `fast` as an opt-in.
     textMode: options.textMode ?? "precise",
+    fonts: options.fonts ?? [],
     metadata: {
       title: metadata.title,
       author: metadata.author,

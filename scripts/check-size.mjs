@@ -18,10 +18,11 @@ const FONT_EXTENSIONS = [".ttf", ".otf", ".woff", ".woff2", ".ttc"];
 /**
  * Bundles that must each fit the budget on their own.
  *
- * `pdf` is measured separately until M4 wires the writer into `render()`; at
- * that point it folds into `index` and this entry goes away. Measuring it now
- * keeps the cost of the writer and pako visible rather than hidden behind
- * tree-shaking.
+ * `index` is the real product: since M4 it reaches the whole pipeline, so its
+ * number is the one that matters. The internal entries below are built so that
+ * browser tests can drive modules the public API does not expose, and measuring
+ * them separately keeps each subsystem's cost visible rather than buried in the
+ * total. None of them appear in the package's exports map.
  */
 const TARGETS = [
   { label: "@pkg/core esm", file: "packages/core/dist/index.js" },

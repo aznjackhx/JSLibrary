@@ -6,6 +6,7 @@
  */
 
 import { BaselineProbe } from "./baseline.js";
+import { captureImage, type CapturedImage } from "./images.js";
 import { measureTextNode } from "./lines.js";
 import { captureStyle, round } from "./styles.js";
 import type { MeasuredElement, MeasuredNode, MeasuredRect } from "./types.js";
@@ -15,6 +16,11 @@ export interface WalkOptions {
   readonly probe: BaselineProbe;
   /** Record per-cluster x positions. Default true, matching the precise text path. */
   readonly precise: boolean;
+  /**
+   * Collects image pixels as they are captured. Populated by the walk, since
+   * the DOM is the only place these can be read from.
+   */
+  readonly images: Map<string, CapturedImage>;
 }
 
 /** Elements that never contribute to output. */
@@ -104,6 +110,17 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
   const anchor = element instanceof view.HTMLAnchorElement ? element : undefined;
   const image = element instanceof view.HTMLImageElement ? element : undefined;
 
+  // Pixels have to be read now: emission runs against plain data, with no DOM
+  // left to read from.
+  let imageRef: string | undefined;
+  if (image) {
+    const captured = captureImage(image);
+    if (captured) {
+      imageRef = `image-${options.images.size + 1}`;
+      options.images.set(imageRef, captured);
+    }
+  }
+
   return {
     kind: "element",
     tag: element.tagName.toLowerCase(),
@@ -113,6 +130,7 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
     contentRect: contentRect(border, style),
     style,
     src: image?.currentSrc || image?.src || undefined,
+    imageRef,
     href: anchor?.getAttribute("href") ?? undefined,
     children,
   };

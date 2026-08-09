@@ -3,10 +3,9 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    // Built only so CI can measure what the writer plus pako actually cost.
-    // Not reachable from `render()` yet and not listed in package exports, so
-    // it is not importable by consumers. Folds into `index` at M4, when
-    // emission wires the writer up.
+    // Internal entries, built so browser tests can drive modules the public
+    // API does not expose, and so CI can measure each subsystem's cost on its
+    // own. None are listed in package exports, so consumers cannot import them.
     pdf: "src/pdf/index.ts",
     fonts: "src/fonts/index.ts",
     measure: "src/measure/index.ts",

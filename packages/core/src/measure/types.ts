@@ -108,6 +108,13 @@ export interface MeasuredElement {
   readonly style: CapturedStyle;
   /** Present for images and other replaced content. */
   readonly src: string | undefined;
+  /**
+   * Key into the captured image map, when pixels were successfully read.
+   *
+   * Pixels live outside the tree so that a geometry dump stays comparable —
+   * embedding megabytes of image data in it would make golden diffs useless.
+   */
+  readonly imageRef: string | undefined;
   /** Present for `<a href>`, for link annotations in M7. */
   readonly href: string | undefined;
   readonly children: readonly MeasuredNode[];
@@ -121,4 +128,16 @@ export interface MeasuredDocument {
   /** Total laid-out height, in CSS pixels. */
   readonly contentHeight: number;
   readonly root: MeasuredElement;
+}
+
+/**
+ * Everything a measurement pass produced.
+ *
+ * Geometry and pixel payloads are kept apart: the tree is small and comparable,
+ * the images are neither.
+ */
+export interface MeasureResult {
+  readonly document: MeasuredDocument;
+  /** Captured pixels, keyed by `MeasuredElement.imageRef`. */
+  readonly images: ReadonlyMap<string, import("./images.js").CapturedImage>;
 }
