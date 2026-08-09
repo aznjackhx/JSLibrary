@@ -5,7 +5,8 @@
  * other module in this package is internal and may change without notice.
  */
 
-import { EmissionContext, paintDocument } from "./emit/emit.js";
+import { EmissionContext } from "./emit/emit.js";
+import { paintPagedDocument } from "./emit/pages.js";
 import { NotImplementedError, RenderError } from "./errors.js";
 import { Font } from "./fonts/font.js";
 import { FontRegistry, type FontStyle } from "./fonts/resolve.js";
@@ -94,15 +95,7 @@ export async function render(
     precise: resolved.textMode === "precise",
   });
 
-  // One page until fragmentation lands in M5. Content taller than the page is
-  // painted anyway rather than silently truncated, so the overflow is visible
-  // instead of mysterious.
-  const page = pdf.addPage({
-    width: resolved.page.size.width,
-    height: resolved.page.size.height,
-  });
-
-  paintDocument(page, measured.document, context, content);
+  paintPagedDocument(pdf, measured.document, context, resolved.page);
   context.finish();
 
   return pdf.toBytes();

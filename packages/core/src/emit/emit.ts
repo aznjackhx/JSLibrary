@@ -156,6 +156,22 @@ export interface PaintOptions {
   readonly context: EmissionContext;
   readonly page: PdfPage;
   readonly transform: PageTransform;
+  /**
+   * The slice of measured content this page shows, in CSS pixels from the top
+   * of the measured column. Anything outside it belongs to another page.
+   */
+  readonly band: PageBand;
+}
+
+/** A half-open vertical range of measured content: `[top, bottom)`. */
+export interface PageBand {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/** Does a measured rect touch this band at all? */
+function intersectsBand(rect: { y: number; height: number }, band: PageBand): boolean {
+  return rect.y < band.bottom && rect.y + rect.height > band.top;
 }
 
 /** Paint a measured subtree onto a page. */
@@ -168,6 +184,11 @@ export function paintNode(
 
   const { transform, context } = options;
   const style = node.style;
+
+  // An element wholly above or below this page contributes nothing to it. Its
+  // descendants are inside its box, so the whole subtree can be skipped.
+  if (!intersectsBand(node.rect, options.band)) return;
+
   const rect = transform.rect(node.rect);
 
   const opaque = style.opacity >= 1;
@@ -247,19 +268,42 @@ function paintText(
   };
 
   for (const line of text.lines) {
+    // Assigned by its top edge, so a line is painted on exactly one page: never
+    // dropped between two, never counted twice by text extraction. Until break
+    // positions are chosen (5.2) a line straddling the boundary is clipped at
+    // the page edge rather than moved, which is visible and deliberate.
+    if (!ownsLine(line, options.band)) continue;
+
     if (emitLine(stream, line, emission)) {
       emitTextDecoration(stream, line, style.textDecorationLine, emission);
     }
   }
 }
 
-/** Paint a whole measured document onto a single page. */
-export function paintDocument(
+/**
+ * Which page owns a line.
+ *
+ * The top edge decides. Using the baseline instead would move a line to the
+ * next page while its ascenders stayed on this one.
+ */
+export function ownsLine(line: { rect: { y: number } }, band: PageBand): boolean {
+  return line.rect.y >= band.top && line.rect.y < band.bottom;
+}
+
+/** Paint one page's worth of a measured document. */
+export function paintPage(
   page: PdfPage,
   measured: MeasuredDocument,
   context: EmissionContext,
   content: PageRect,
+  band: PageBand,
 ): void {
-  const transform = new PageTransform({ content });
-  paintNode(page.content, measured.root, { context, page, transform });
+  const transform = new PageTransform({ content, scrollY: band.top });
+
+  // Everything is clipped to the content box: a box taller than the page must
+  // stop at the margin rather than bleed across it.
+  page.content.save();
+  page.content.clipRect(content.x, content.y, content.width, content.height);
+  paintNode(page.content, measured.root, { context, page, transform, band });
+  page.content.restore();
 }

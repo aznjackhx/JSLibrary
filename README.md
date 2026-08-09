@@ -7,11 +7,12 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 4 — emission.** `render()` works end to end for a single
-> page: measured DOM in, vector PDF out, verified against the browser's own
-> rendering within a 0.5% pixel diff. Fragmentation across pages lands in M5, so
-> content taller than one page is not yet split. See [`CLAUDE.md`](./CLAUDE.md)
-> for the full brief and milestone plan.
+> **Status: Milestone 5.1 — multi-page output.** `render()` works end to end and
+> paginates: measured DOM in, multi-page vector PDF out, verified against the
+> browser's own rendering within a 0.5% pixel diff. Break *policy* is not in yet
+> — pages are cut at fixed intervals, so a line straddling a boundary is clipped
+> rather than moved. See [`CLAUDE.md`](./CLAUDE.md) for the full brief and
+> milestone plan.
 
 ## Approach
 
