@@ -15,11 +15,8 @@ import type * as PkgCore from "@pkg/core";
 
 const IIFE_BUNDLE = resolve(import.meta.dirname, "../../packages/core/dist/index.global.js");
 
-declare global {
-  interface Window {
-    PkgCore: typeof PkgCore;
-  }
-}
+/** The injected bundle, typed. See globals.d.ts for why the cast is needed. */
+type CoreGlobal = typeof PkgCore;
 
 test.beforeEach(async ({ page }) => {
   await page.goto("about:blank");
@@ -27,7 +24,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("exposes the public surface on the global", async ({ page }) => {
-  const exported = await page.evaluate(() => Object.keys(window.PkgCore).sort());
+  const exported = await page.evaluate(() => Object.keys(window.PkgCore as CoreGlobal).sort());
   expect(exported).toContain("render");
   expect(exported).toContain("pageGeometry");
   expect(exported).toContain("toPt");
@@ -35,7 +32,7 @@ test("exposes the public surface on the global", async ({ page }) => {
 
 test("computes page geometry in the browser", async ({ page }) => {
   const geometry = await page.evaluate(() =>
-    window.PkgCore.pageGeometry("Letter", "portrait", "1in"),
+    (window.PkgCore as CoreGlobal).pageGeometry("Letter", "portrait", "1in"),
   );
 
   expect(geometry.size).toEqual({ width: 612, height: 792 });
@@ -45,7 +42,7 @@ test("computes page geometry in the browser", async ({ page }) => {
 test("render rejects with NotImplementedError until M4 lands", async ({ page }) => {
   const message = await page.evaluate(async () => {
     try {
-      await window.PkgCore.render(document.body);
+      await (window.PkgCore as CoreGlobal).render(document.body);
       return "resolved";
     } catch (error) {
       return (error as Error).name;
@@ -75,7 +72,7 @@ test("runs under a strict CSP with no eval", async ({ page }) => {
   await page.goto("https://example.test/csp-test");
   await page.addScriptTag({ content: readFileSync(IIFE_BUNDLE, "utf8") });
 
-  const width = await page.evaluate(() => window.PkgCore.toPt("1in"));
+  const width = await page.evaluate(() => (window.PkgCore as CoreGlobal).toPt("1in"));
   expect(width).toBe(72);
   expect(violations.filter((text) => text.includes("Content Security Policy"))).toEqual([]);
 });

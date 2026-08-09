@@ -30,6 +30,7 @@ const TARGETS = [
   // fonts pulls in pdf and pako, so this is the running total for everything
   // the engine has so far.
   { label: "@pkg/core fonts", file: "packages/core/dist/fonts.js" },
+  { label: "@pkg/core measure", file: "packages/core/dist/measure.js" },
 ];
 
 function gzipBytes(path) {

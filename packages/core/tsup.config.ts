@@ -9,6 +9,7 @@ export default defineConfig({
     // emission wires the writer up.
     pdf: "src/pdf/index.ts",
     fonts: "src/fonts/index.ts",
+    measure: "src/measure/index.ts",
   },
   tsconfig: "tsconfig.build.json",
   // Each entry must be self-contained. With splitting on, shared code moves to

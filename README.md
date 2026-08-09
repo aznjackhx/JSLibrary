@@ -7,11 +7,11 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 2 — font pipeline.** The writer emits valid PDFs with
-> subset, embedded fonts and searchable text (validated with `qpdf --check`,
-> pdf.js and fontkit), but `render()` throws `NotImplementedError` until
-> emission lands in M4. See [`CLAUDE.md`](./CLAUDE.md) for the full brief and
-> milestone plan.
+> **Status: Milestone 3 — DOM measurement.** The writer emits valid PDFs with
+> subset, embedded fonts, and the measurement stage extracts stable geometry
+> from a real browser. `render()` still throws `NotImplementedError` until
+> emission joins the two in M4. See [`CLAUDE.md`](./CLAUDE.md) for the full
+> brief and milestone plan.
 
 ## Approach
 
@@ -73,8 +73,9 @@ The PDF conformance test needs `qpdf` on PATH (`apt-get install qpdf`). It skips
 locally when absent and fails when absent in CI — validating output against an
 independent implementation is not optional there.
 
-Golden images currently exist for Chromium only; the visual comparison skips on
-Firefox and WebKit until those are generated on a machine with them installed.
+Golden images and geometry goldens currently exist for Chromium only; those
+comparisons skip on Firefox and WebKit until goldens are generated on a machine
+with them installed. Structural assertions run on all three.
 
 Visual regression goldens live in `tests/browser/goldens`, one set per browser.
 Refresh with `UPDATE_GOLDENS=1 pnpm test:browser` and review the diff before

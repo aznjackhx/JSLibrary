@@ -22,6 +22,7 @@ const BUNDLES = [
   "packages/core/dist/index.global.js",
   "packages/core/dist/pdf.js",
   "packages/core/dist/fonts.js",
+  "packages/core/dist/measure.js",
 ];
 
 const FORBIDDEN = [
