@@ -7,9 +7,10 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 0 — scaffolding.** `render()` throws `NotImplementedError`
-> until emission lands in M4. See [`CLAUDE.md`](./CLAUDE.md) for the full brief
-> and milestone plan.
+> **Status: Milestone 1 — PDF primitives.** The writer emits valid PDFs
+> (validated with `qpdf --check` and pdf.js), but `render()` throws
+> `NotImplementedError` until emission lands in M4. See [`CLAUDE.md`](./CLAUDE.md)
+> for the full brief and milestone plan.
 
 ## Approach
 
@@ -50,6 +51,13 @@ Browser tests need browsers: `pnpm exec playwright install chromium`. In a
 container that already ships one whose build does not match this Playwright
 version, point at it instead:
 `PW_CHROMIUM_EXECUTABLE=/path/to/chromium pnpm test:browser --project=chromium`.
+
+The PDF conformance test needs `qpdf` on PATH (`apt-get install qpdf`). It skips
+locally when absent and fails when absent in CI — validating output against an
+independent implementation is not optional there.
+
+Golden images currently exist for Chromium only; the visual comparison skips on
+Firefox and WebKit until those are generated on a machine with them installed.
 
 Visual regression goldens live in `tests/browser/goldens`, one set per browser.
 Refresh with `UPDATE_GOLDENS=1 pnpm test:browser` and review the diff before

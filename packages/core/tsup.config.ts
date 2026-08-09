@@ -1,7 +1,14 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: { index: "src/index.ts" },
+  entry: {
+    index: "src/index.ts",
+    // Built only so CI can measure what the writer plus pako actually cost.
+    // Not reachable from `render()` yet and not listed in package exports, so
+    // it is not importable by consumers. Folds into `index` at M4, when
+    // emission wires the writer up.
+    pdf: "src/pdf/index.ts",
+  },
   tsconfig: "tsconfig.build.json",
   // ESM + CJS for bundlers/Node tooling, IIFE for a plain <script> tag.
   format: ["esm", "cjs", "iife"],

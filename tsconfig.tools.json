@@ -5,7 +5,9 @@
     "outDir": ".tsbuild/tools",
     "rootDir": ".",
     "paths": {
-      "@pkg/core": ["./packages/core/src/index.ts"]
+      "@pkg/core": ["./packages/core/src/index.ts"],
+      // Tests reach into internals the public API deliberately does not expose.
+      "@pkg/core/*": ["./packages/core/src/*"]
     }
   },
   "include": ["tests/**/*.ts", "playwright.config.ts", "vitest.config.ts"],

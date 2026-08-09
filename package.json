@@ -12,7 +12,7 @@
     "typecheck": "tsc --build --force",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:browser": "playwright test",
+    "test:browser": "playwright test --tsconfig=tsconfig.tools.json",
     "size": "node scripts/check-size.mjs",
     "csp": "node scripts/check-csp.mjs",
     "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm size && pnpm csp"
@@ -20,7 +20,9 @@
   "devDependencies": {
     "@playwright/test": "^1.49.1",
     "@types/node": "^22.10.5",
+    "@types/pako": "^3.0.0",
     "@types/pngjs": "^6.0.5",
+    "pdfjs-dist": "^6.2.108",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "tsup": "^8.3.5",
@@ -28,6 +30,8 @@
     "vitest": "^2.1.8"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

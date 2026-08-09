@@ -22,6 +22,15 @@ export function expectMatchesGolden(
   const result = compareToGolden(`${name}.${testInfo.project.name}`, actualPng, options);
 
   if (result.goldenWritten) {
+    // Recording a baseline is right locally and wrong in CI: a golden that is
+    // missing there means it was never committed, and quietly writing one
+    // turns the safety net into a rubber stamp.
+    expect(
+      Boolean(process.env["CI"]),
+      `${name}: no committed golden for project ${testInfo.project.name}. ` +
+        "Generate it with UPDATE_GOLDENS=1 and commit the PNG.",
+    ).toBe(false);
+
     testInfo.annotations.push({ type: "golden-written", description: result.message });
     return result;
   }

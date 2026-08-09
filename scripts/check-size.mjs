@@ -15,10 +15,18 @@ const ROOT = resolve(import.meta.dirname, "..");
 const BUDGET_BYTES = 60 * 1024;
 const FONT_EXTENSIONS = [".ttf", ".otf", ".woff", ".woff2", ".ttc"];
 
-/** Bundles that must each fit the budget on their own. */
+/**
+ * Bundles that must each fit the budget on their own.
+ *
+ * `pdf` is measured separately until M4 wires the writer into `render()`; at
+ * that point it folds into `index` and this entry goes away. Measuring it now
+ * keeps the cost of the writer and pako visible rather than hidden behind
+ * tree-shaking.
+ */
 const TARGETS = [
   { label: "@pkg/core esm", file: "packages/core/dist/index.js" },
   { label: "@pkg/core iife", file: "packages/core/dist/index.global.js" },
+  { label: "@pkg/core pdf", file: "packages/core/dist/pdf.js" },
 ];
 
 function gzipBytes(path) {
