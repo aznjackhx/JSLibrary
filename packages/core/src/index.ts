@@ -76,14 +76,16 @@ export async function render(
   // own print path — so the document's stylesheets are read directly.
   const pageRules = parsePageRules(element.ownerDocument);
 
-  const contexts = new Map<number, PageContext>();
-  const contextFor = (pageIndex: number): PageContext => {
-    const existing = contexts.get(pageIndex);
+  const contexts = new Map<string, PageContext>();
+  const contextFor = (pageIndex: number, blank = false): PageContext => {
+    const key = `${pageIndex}:${blank ? "blank" : "content"}`;
+    const existing = contexts.get(key);
     if (existing) return existing;
 
     const built = pageContextFor({
       rules: pageRules,
       pageIndex,
+      blank,
       overrides: {
         size: options.pageSize,
         orientation: options.orientation,
@@ -106,7 +108,7 @@ export async function render(
         },
       },
     });
-    contexts.set(pageIndex, built);
+    contexts.set(key, built);
     return built;
   };
 

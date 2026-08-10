@@ -130,6 +130,33 @@ describe("buildFragmentModel", () => {
     }
   });
 
+  it("records which side each keyword demands", () => {
+    const parityOf = (keyword: string): string => {
+      const root = element("div", 0, 100, [element("p", 40, 10, [], { breakBefore: keyword })]);
+      return buildFragmentModel(root).forced[0]?.parity as string;
+    };
+
+    expect(parityOf("page")).toBe("any");
+    expect(parityOf("always")).toBe("any");
+    expect(parityOf("left")).toBe("left");
+    expect(parityOf("verso")).toBe("left");
+    expect(parityOf("right")).toBe("right");
+    expect(parityOf("recto")).toBe("right");
+  });
+
+  it("keeps the stronger demand when two breaks coincide", () => {
+    // `break-after: page` on one element and `break-before: right` on the next
+    // are one break position with two demands; the side-specific one governs.
+    const root = element("div", 0, 200, [
+      element("section", 0, 50, [], { breakAfter: "page" }),
+      element("section", 50, 60, [], { breakBefore: "right" }),
+    ]);
+    const { forced } = buildFragmentModel(root);
+
+    expect(forced).toHaveLength(1);
+    expect(forced[0]?.parity).toBe("right");
+  });
+
   it("ignores break values that do not force a page", () => {
     for (const keyword of ["auto", "avoid", "column", "avoid-page"]) {
       const root = element("div", 0, 100, [element("p", 40, 10, [], { breakBefore: keyword })]);

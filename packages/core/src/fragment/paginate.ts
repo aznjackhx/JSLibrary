@@ -12,7 +12,7 @@
  * forever looking for a break that does not exist.
  */
 
-import type { BreakAtom, FragmentModel } from "./atoms.js";
+import type { BreakAtom, FragmentModel, PageParity } from "./atoms.js";
 import { reservedHeightAt, type RepeatingTable } from "./tables.js";
 
 /** One page's slice of the measured column. */
@@ -35,6 +35,12 @@ export interface PageSlice {
   readonly reservedTop: number;
   /** Height given up at the foot of the page to repeated table footers. */
   readonly reservedBottom: number;
+  /**
+   * True for a page generated to satisfy a side-specific break rather than to
+   * hold content. It shows nothing from the measured column, but it is a real
+   * page: it is counted, it is numbered, and `@page :blank` styles it.
+   */
+  readonly blank: boolean;
 }
 
 export interface PaginateOptions {
@@ -57,6 +63,19 @@ export interface PaginateOptions {
 
 /** Smallest advance that counts as progress, guarding against a stalled loop. */
 const MIN_ADVANCE = 0.5;
+
+/**
+ * Does a page at this index fall on the side a break demanded?
+ *
+ * Page one is a right-hand page in a left-to-right document, so even indices
+ * are right and odd indices are left — the same convention `@page :left` and
+ * `@page :right` use, and they have to agree or a chapter forced onto a
+ * right-hand page would be styled as a left one.
+ */
+function satisfiesParity(parity: PageParity, pageIndex: number): boolean {
+  if (parity === "any") return true;
+  return parity === "right" ? pageIndex % 2 === 0 : pageIndex % 2 === 1;
+}
 
 export function paginate(model: FragmentModel, options: PaginateOptions): PageSlice[] {
   const { contentHeight } = options;
@@ -148,12 +167,30 @@ export function paginate(model: FragmentModel, options: PaginateOptions): PageSl
       overflowed,
       reservedTop,
       reservedBottom,
+      blank: false,
     });
 
     if (isLast) break;
 
     top = breakY;
     index += 1;
+
+    // The page now beginning holds the content the forced break pushed down.
+    // If that break demanded a side, and this page is on the wrong one, a
+    // blank page goes in between. Parity alternates, so this inserts at most
+    // one page and cannot loop.
+    while (forced && forcedY !== undefined && !satisfiesParity(forced.parity, index)) {
+      slices.push({
+        index,
+        top,
+        bottom: top,
+        overflowed: false,
+        reservedTop: 0,
+        reservedBottom: 0,
+        blank: true,
+      });
+      index += 1;
+    }
   }
 
   return slices;

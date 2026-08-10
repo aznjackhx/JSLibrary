@@ -7,12 +7,20 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 5 — fragmentation.** `render()` works end to end:
-> measured DOM in, multi-page vector PDF out. Pages break where content allows,
-> tables repeat their header and footer on every page they span, and output
-> matches the browser's own rendering within a 0.5% pixel diff. Page furniture
-> (`@page` rules, margin boxes, page counters) is M6. See
-> [`CLAUDE.md`](./CLAUDE.md) for the full brief and milestone plan.
+> **Status: Milestone 6 complete — page furniture.** `render()` works end to
+> end: measured DOM in, multi-page vector PDF out. Pages break where content
+> allows, tables repeat their header and footer on every page they span, and
+> output matches the browser's own rendering within a 0.5% pixel diff. The
+> document's own `@page` rules drive page size and margins, all sixteen margin
+> boxes print, `counter(page)`/`counter(pages)` and GCPM named strings resolve,
+> and `break-before: right` generates the blank page it implies. Links,
+> bookmarks and vector SVG are M7. See [`CLAUDE.md`](./CLAUDE.md) for the full
+> brief and milestone plan.
+>
+> Note that `@page` and `string-set` are read from authored CSS rather than the
+> CSSOM: a browser discards declarations it does not implement, so a `<style>`
+> element's text is the only faithful record. Rules in a linked stylesheet are
+> subject to that stripping, and a cross-origin sheet cannot be read at all.
 
 ## Approach
 

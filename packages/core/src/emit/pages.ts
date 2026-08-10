@@ -26,8 +26,11 @@ import { paintMarginBoxes } from "./margin-boxes.js";
 export type { PageSlice } from "../fragment/paginate.js";
 
 export interface PagedOptions {
-  /** Geometry for a given page index. */
-  readonly contextFor: (pageIndex: number) => PageContext;
+  /**
+   * Geometry for a given page index. `blank` is true for a page generated to
+   * satisfy a side-specific break, which `@page :blank` selects.
+   */
+  readonly contextFor: (pageIndex: number, blank: boolean) => PageContext;
   readonly stranding?: StrandingDefaults;
   /** Named-string assignments from measurement, in document order. */
   readonly strings?: readonly StringAssignment[];
@@ -44,23 +47,24 @@ export function paintPagedDocument(
   const tables = collectRepeatingTables(measured.root);
 
   const slices = paginate(model, {
-    pageHeight: (pageIndex) => ptToPx(options.contextFor(pageIndex).content.height),
+    pageHeight: (pageIndex) => ptToPx(options.contextFor(pageIndex, false).content.height),
     contentHeight: measured.contentHeight,
     tables,
   });
 
   for (const slice of slices) {
-    const page$ = options.contextFor(slice.index);
+    const page$ = options.contextFor(slice.index, slice.blank);
     const page = pdf.addPage({ width: page$.size.width, height: page$.size.height });
 
     const pageHeight = ptToPx(page$.content.height);
 
     // A page beginning inside a table repeats that table's header at the top
     // and its footer at the foot.
-    const header = headerRepeatAt(tables, slice.top)
+    // A blank page holds no rows, so it repeats no table header either.
+    const header = (slice.blank ? [] : headerRepeatAt(tables, slice.top))
       .map((table) => table.header?.node)
       .filter((node): node is NonNullable<typeof node> => node !== undefined);
-    const footer = footerRepeatAt(tables, slice.top, pageHeight)
+    const footer = (slice.blank ? [] : footerRepeatAt(tables, slice.top, pageHeight))
       .map((table) => table.footer?.node)
       .filter((node): node is NonNullable<typeof node> => node !== undefined);
 

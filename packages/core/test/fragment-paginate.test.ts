@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { BreakAtom, FragmentModel } from "../src/fragment/atoms.js";
+import type { BreakAtom, ForcedBreak, FragmentModel } from "../src/fragment/atoms.js";
 import { paginate } from "../src/fragment/paginate.js";
 
 /** Evenly spaced lines, the shape most documents reduce to. */
@@ -12,9 +12,14 @@ function lines(count: number, height: number, gap = 0, from = 0): BreakAtom[] {
   }));
 }
 
-const model = (atoms: BreakAtom[], forced: number[] = []): FragmentModel => ({
+const model = (
+  atoms: BreakAtom[],
+  forced: Array<number | ForcedBreak> = [],
+): FragmentModel => ({
   atoms,
-  forced: forced.map((y) => ({ y })),
+  forced: forced.map((entry) =>
+    typeof entry === "number" ? { y: entry, parity: "any" as const } : entry,
+  ),
 });
 
 describe("paginate", () => {
@@ -117,5 +122,51 @@ describe("paginate", () => {
 
   it("rejects a non-positive page height", () => {
     expect(() => paginate(model([]), { pageHeight: 0, contentHeight: 10 })).toThrow(RangeError);
+  });
+});
+
+describe("side-specific breaks", () => {
+  it("leaves a blank page when the demanded side is the wrong one", () => {
+    // The break falls at 100, which would put the content on page index 1 —
+    // a left-hand page. `right` demands index 2, so index 1 is left blank.
+    const slices = paginate(model(lines(10, 20), [{ y: 100, parity: "right" }]), {
+      pageHeight: 100,
+      contentHeight: 200,
+    });
+
+    expect(slices.map((slice) => slice.blank)).toEqual([false, true, false]);
+    expect(slices[1]?.top).toBe(slices[1]?.bottom);
+    // The blank page holds nothing, so the content it displaced starts the
+    // page after it rather than being skipped.
+    expect(slices[2]?.top).toBe(100);
+  });
+
+  it("inserts nothing when the demanded side is already correct", () => {
+    const slices = paginate(model(lines(10, 20), [{ y: 100, parity: "left" }]), {
+      pageHeight: 100,
+      contentHeight: 200,
+    });
+
+    expect(slices.map((slice) => slice.blank)).toEqual([false, false]);
+  });
+
+  it("never inserts more than one blank page for a break", () => {
+    // Parity alternates, so one blank always resolves the demand; a second
+    // would mean the loop was not converging.
+    const slices = paginate(model(lines(30, 20), [{ y: 100, parity: "right" }]), {
+      pageHeight: 100,
+      contentHeight: 600,
+    });
+
+    expect(slices.filter((slice) => slice.blank)).toHaveLength(1);
+  });
+
+  it("treats a plain page break as satisfied by either side", () => {
+    const slices = paginate(model(lines(10, 20), [{ y: 100, parity: "any" }]), {
+      pageHeight: 100,
+      contentHeight: 200,
+    });
+
+    expect(slices.some((slice) => slice.blank)).toBe(false);
   });
 });

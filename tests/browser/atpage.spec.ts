@@ -148,6 +148,105 @@ test("is deterministic", async ({ page }) => {
   expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
 });
 
+test.describe("all sixteen margin boxes", () => {
+  /** Every text item on page one, with the position it was painted at. */
+  async function placedItems(bytes: Uint8Array): Promise<Map<string, { x: number; y: number }>> {
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+
+    try {
+      const content = await (await document_.getPage(1)).getTextContent();
+      const placed = new Map<string, { x: number; y: number }>();
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const [, , , , x, y] = item.transform as number[];
+        placed.set(item.str, { x: x as number, y: y as number });
+      }
+      return placed;
+    } finally {
+      await task.destroy();
+    }
+  }
+
+  // A distinct token per box, short enough to fit a one-inch margin.
+  const BOXES = [
+    "top-left-corner",
+    "top-left",
+    "top-center",
+    "top-right",
+    "top-right-corner",
+    "right-top",
+    "right-middle",
+    "right-bottom",
+    "bottom-right-corner",
+    "bottom-right",
+    "bottom-center",
+    "bottom-left",
+    "bottom-left-corner",
+    "left-bottom",
+    "left-middle",
+    "left-top",
+  ] as const;
+
+  const token = (name: string): string => `X${BOXES.indexOf(name as never) + 1}`;
+
+  const allBoxesCss = `@page {
+      size: Letter; margin: 1in;
+      ${BOXES.map((name) => `@${name} { content: "${token(name)}"; }`).join("\n      ")}
+    }`;
+
+  test("paints every one of them", async ({ page }) => {
+    const placed = await placedItems(await renderWithPageCss(page, allBoxesCss));
+
+    const missing = BOXES.filter((name) => !placed.has(token(name)));
+    expect(missing, "margin boxes that printed nothing").toEqual([]);
+  });
+
+  test("puts each box in the margin its name says", async ({ page }) => {
+    const placed = await placedItems(await renderWithPageCss(page, allBoxesCss));
+    const at = (name: string): { x: number; y: number } =>
+      placed.get(token(name)) as { x: number; y: number };
+
+    // Letter is 612x792pt with a 72pt margin, so the content box is
+    // 72..540 across and 72..720 up.
+    const wrong: string[] = [];
+    for (const name of BOXES) {
+      const { x, y } = at(name);
+      if (name.startsWith("top-") && y < 720) wrong.push(`${name} not in the top margin`);
+      if (name.startsWith("bottom-") && y > 72) wrong.push(`${name} not in the bottom margin`);
+      if (name.startsWith("left-") && x >= 72) wrong.push(`${name} not in the left margin`);
+      if (name.startsWith("right-") && x < 540) wrong.push(`${name} not in the right margin`);
+    }
+
+    expect(wrong).toEqual([]);
+  });
+
+  test("orders the side boxes down the edge", async ({ page }) => {
+    const placed = await placedItems(await renderWithPageCss(page, allBoxesCss));
+    const y = (name: string): number => (placed.get(token(name)) as { y: number }).y;
+
+    for (const edge of ["left", "right"]) {
+      expect(y(`${edge}-top`), `${edge} edge`).toBeGreaterThan(y(`${edge}-middle`));
+      expect(y(`${edge}-middle`), `${edge} edge`).toBeGreaterThan(y(`${edge}-bottom`));
+    }
+  });
+
+  test("keeps the boxes on an edge from overlapping", async ({ page }) => {
+    const placed = await placedItems(await renderWithPageCss(page, allBoxesCss));
+    const x = (name: string): number => (placed.get(token(name)) as { x: number }).x;
+
+    // Each edge is divided into thirds, so left sits before centre sits before
+    // right — two boxes claiming the full edge would print on top of each other.
+    for (const edge of ["top", "bottom"]) {
+      expect(x(`${edge}-left-corner`), `${edge} edge`).toBeLessThan(x(`${edge}-left`));
+      expect(x(`${edge}-left`), `${edge} edge`).toBeLessThan(x(`${edge}-center`));
+      expect(x(`${edge}-center`), `${edge} edge`).toBeLessThan(x(`${edge}-right`));
+      expect(x(`${edge}-right`), `${edge} edge`).toBeLessThan(x(`${edge}-right-corner`));
+    }
+  });
+});
+
 test.describe("margin boxes", () => {
   /** Text of each page, in order. */
   async function textPerPage(bytes: Uint8Array): Promise<string[]> {
@@ -482,5 +581,123 @@ test.describe("named strings", () => {
     );
 
     for (const page_ of pages) expect(page_.text).not.toContain("undefined");
+  });
+});
+
+test.describe("side-specific breaks", () => {
+  async function renderRecto(page: Page, pageCss: string): Promise<Uint8Array> {
+    const { rectoChaptersHtml } = await import("../fixtures/atpage-page.js");
+    await page.setContent(rectoChaptersHtml(pageCss), { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    await page.addScriptTag({ content: readFileSync(CORE_BUNDLE, "utf8") });
+
+    const bytes = await page.evaluate(
+      async ({ fontBytes }) => {
+        const core = window.PkgCore as CoreModule;
+        const pdf = await core.render(document.querySelector("#subject") as Element, {
+          metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
+          fonts: [{ family: "Test Mono", data: new Uint8Array(fontBytes) }],
+        });
+        return [...pdf];
+      },
+      { fontBytes: [...renderFontBytes()] },
+    );
+
+    return new Uint8Array(bytes);
+  }
+
+  /** Concatenated text of each page. */
+  async function texts(bytes: Uint8Array): Promise<string[]> {
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+
+    try {
+      const pages: string[] = [];
+      for (let number = 1; number <= document_.numPages; number += 1) {
+        const content = await (await document_.getPage(number)).getTextContent();
+        pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(""));
+      }
+      return pages;
+    } finally {
+      await task.destroy();
+    }
+  }
+
+  const rectoCss = "@page { size: Letter; margin: 1in }";
+
+  test("opens every chapter on a right-hand page", async ({ page }) => {
+    const pages = await texts(await renderRecto(page, rectoCss));
+
+    for (const [index, text] of pages.entries()) {
+      const opens = /CHAPTER-(\d+)/.exec(text);
+      if (!opens) continue;
+      // Page one is a right-hand page, so right-hand pages are even indices.
+      expect(index % 2, `chapter ${opens[1]} opened on a left-hand page`).toBe(0);
+    }
+  });
+
+  test("generates a blank page to reach the demanded side", async ({ page }) => {
+    const pages = await texts(await renderRecto(page, rectoCss));
+
+    // Three short chapters would fit on two pages without the rule; honouring
+    // it costs a blank page between each pair.
+    expect(pages.length).toBe(5);
+    expect(pages[1]?.trim()).toBe("");
+    expect(pages[3]?.trim()).toBe("");
+    expect(pages[0]).toContain("CHAPTER-1");
+    expect(pages[2]).toContain("CHAPTER-2");
+    expect(pages[4]).toContain("CHAPTER-3");
+  });
+
+  test("loses no content to the pages it generates", async ({ page }) => {
+    const all = (await texts(await renderRecto(page, rectoCss))).join("");
+
+    for (let chapter = 1; chapter <= 3; chapter += 1) {
+      for (let line = 1; line <= 6; line += 1) {
+        expect(all, `C${chapter} line ${line}`).toContain(`C${chapter} line ${line}.`);
+      }
+    }
+  });
+
+  test("numbers a generated page like any other", async ({ page }) => {
+    const pages = await texts(
+      await renderRecto(
+        page,
+        `@page {
+           size: Letter; margin: 1in;
+           @bottom-center { content: counter(page) " of " counter(pages); }
+         }`,
+      ),
+    );
+
+    // A blank page is still a sheet of paper: it is counted and it is numbered.
+    for (const [index, text] of pages.entries()) {
+      expect(text, `page ${index + 1}`).toContain(`${index + 1} of ${pages.length}`);
+    }
+  });
+
+  test("lets @page :blank strip the running header", async ({ page }) => {
+    const pages = await texts(
+      await renderRecto(
+        page,
+        `@page {
+           size: Letter; margin: 1in;
+           @top-center { content: "RUNNING-HEADER"; }
+         }
+         @page :blank { @top-center { content: none; } }`,
+      ),
+    );
+
+    expect(pages[0]).toContain("RUNNING-HEADER");
+    expect(pages[1], "the generated page kept a header it should not have").not.toContain(
+      "RUNNING-HEADER",
+    );
+  });
+
+  test("is deterministic", async ({ page }) => {
+    const first = await renderRecto(page, rectoCss);
+    const second = await renderRecto(page, rectoCss);
+    expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
   });
 });

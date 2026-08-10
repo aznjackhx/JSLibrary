@@ -39,6 +39,33 @@ describe("ruleApplies", () => {
   it("ignores a named page, which needs an element to opt in", () => {
     expect(ruleApplies(rule(["cover"]), 0)).toBe(false);
   });
+
+  it("applies :blank only to a generated page", () => {
+    expect(ruleApplies(rule(["blank"]), 1, true)).toBe(true);
+    expect(ruleApplies(rule(["blank"]), 1, false)).toBe(false);
+  });
+
+  it("still gives a blank page a side", () => {
+    // A blank page is a real sheet of paper: it faces one way, and mirrored
+    // margins have to hold on it too.
+    expect(ruleApplies(rule(["blank", "left"]), 1, true)).toBe(true);
+    expect(ruleApplies(rule(["blank", "right"]), 1, true)).toBe(false);
+  });
+});
+
+describe("cascadeFor with :blank", () => {
+  it("clears a running header on a generated page", () => {
+    const rules = parsePageRulesFromText(`
+      @page { @top-center { content: "HEADER"; } }
+      @page :blank { @top-center { content: none; } }`);
+
+    expect(cascadeFor(rules, 1, false).marginBoxes.get("top-center")?.get("content")).toBe(
+      '"HEADER"',
+    );
+    expect(cascadeFor(rules, 1, true).marginBoxes.get("top-center")?.get("content")).toBe(
+      "none",
+    );
+  });
 });
 
 describe("cascadeFor", () => {

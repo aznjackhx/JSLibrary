@@ -25,10 +25,24 @@ export interface BreakAtom {
   readonly bottom: number;
 }
 
+/**
+ * Which side of a spread the content after a break must land on.
+ *
+ * `recto` and `verso` are the same demand as `right` and `left` for a
+ * left-to-right document, which is the only direction this engine paginates.
+ */
+export type PageParity = "any" | "left" | "right";
+
 /** A break the document demands, rather than merely permits. */
 export interface ForcedBreak {
   /** Content at or below this y starts a new page. */
   readonly y: number;
+  /**
+   * The side the new page must fall on. Satisfying it may require leaving a
+   * blank page in between — which is the whole point of `break-before: left`
+   * in a duplex document, where a chapter has to open on a right-hand page.
+   */
+  readonly parity: PageParity;
 }
 
 export interface FragmentModel {
@@ -36,8 +50,18 @@ export interface FragmentModel {
   readonly forced: readonly ForcedBreak[];
 }
 
-/** Values of `break-before` / `break-after` that force a new page. */
-const FORCING = new Set(["page", "always", "left", "right", "recto", "verso"]);
+/**
+ * Values of `break-before` / `break-after` that force a new page, and the side
+ * each one demands.
+ */
+const FORCING = new Map<string, PageParity>([
+  ["page", "any"],
+  ["always", "any"],
+  ["left", "left"],
+  ["verso", "left"],
+  ["right", "right"],
+  ["recto", "right"],
+]);
 
 /**
  * Elements whose box must not be divided.
@@ -105,8 +129,11 @@ export function buildFragmentModel(
     }
 
     // A forced break before this element means the element starts a page.
-    if (FORCING.has(style.breakBefore)) forced.push({ y: node.rect.y });
-    if (FORCING.has(style.breakAfter)) forced.push({ y: node.rect.y + node.rect.height });
+    const before = FORCING.get(style.breakBefore);
+    if (before) forced.push({ y: node.rect.y, parity: before });
+
+    const after = FORCING.get(style.breakAfter);
+    if (after) forced.push({ y: node.rect.y + node.rect.height, parity: after });
 
     // Zero-height elements cannot be split and contribute no atom of their own.
     const hasBox = node.rect.height > 0;
@@ -138,10 +165,27 @@ export function buildFragmentModel(
   atoms.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
   forced.sort((a, b) => a.y - b.y);
 
+  // Orphan and widow minimums (see below) do not touch forced breaks, but two
+  // demands at the same position must first be reconciled: an element with
+  // `break-before: right` immediately after one with `break-after: page`
+  // produces two breaks at one y, and the side-specific demand is the stronger
+  // of the two. Keeping both would let the weaker one be found first.
+  const merged: ForcedBreak[] = [];
+  for (const candidate of forced) {
+    const previous = merged[merged.length - 1];
+    if (previous && previous.y === candidate.y) {
+      if (previous.parity === "any" && candidate.parity !== "any") {
+        merged[merged.length - 1] = candidate;
+      }
+      continue;
+    }
+    merged.push(candidate);
+  }
+
   // Orphan and widow minimums remove break positions inside paragraphs, which
   // is expressed by joining the lines either side of a forbidden position into
   // one span.
   const blocks = collectLineBlocks(root, defaults);
 
-  return { atoms: applyStranding(atoms, blocks), forced };
+  return { atoms: applyStranding(atoms, blocks), forced: merged };
 }
