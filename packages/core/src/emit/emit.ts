@@ -72,6 +72,17 @@ export class EmissionContext {
     return subset;
   }
 
+  /**
+   * The face used for margin boxes.
+   *
+   * A running header is not in the document, so no computed style names its
+   * font. The registry's fallback is used unless a box asks for a family it
+   * knows.
+   */
+  marginBoxFont(families: readonly string[] = []): Font {
+    return this.registry.resolveOrFallback({ families });
+  }
+
   /** Resolve a measured style to a font face. */
   fontFor(style: CapturedStyle): Font {
     return this.registry.resolveOrFallback({

@@ -147,3 +147,176 @@ test("is deterministic", async ({ page }) => {
   const second = await renderWithPageCss(page, css);
   expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
 });
+
+test.describe("margin boxes", () => {
+  /** Text of each page, in order. */
+  async function textPerPage(bytes: Uint8Array): Promise<string[]> {
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+
+    try {
+      const pages: string[] = [];
+      for (let number = 1; number <= document_.numPages; number += 1) {
+        const content = await (await document_.getPage(number)).getTextContent();
+        pages.push(content.items.map((item) => ("str" in item ? item.str : "")).join(""));
+      }
+      return pages;
+    } finally {
+      await task.destroy();
+    }
+  }
+
+  test("prints a running footer with the page number and total", async ({ page }) => {
+    const pages = await textPerPage(
+      await renderWithPageCss(
+        page,
+        `@page {
+           size: Letter; margin: 1in;
+           @bottom-center { content: "Page " counter(page) " of " counter(pages); }
+         }`,
+      ),
+    );
+
+    expect(pages.length).toBeGreaterThan(1);
+    for (const [index, text] of pages.entries()) {
+      expect(text, `page ${index + 1}`).toContain(`Page ${index + 1} of ${pages.length}`);
+    }
+  });
+
+  test("knows the total without a second pass", async ({ page }) => {
+    // Pagination completes before anything is painted, so counter(pages) is a
+    // number by the time a margin box is resolved — no placeholder to patch.
+    const pages = await textPerPage(
+      await renderWithPageCss(
+        page,
+        `@page { size: Letter; margin: 1in; @top-right { content: counter(pages); } }`,
+      ),
+    );
+
+    for (const text of pages) expect(text).toContain(String(pages.length));
+  });
+
+  test("prints static text in several boxes at once", async ({ page }) => {
+    const pages = await textPerPage(
+      await renderWithPageCss(
+        page,
+        `@page {
+           size: Letter; margin: 1in;
+           @top-left { content: "LEFTBOX"; }
+           @top-center { content: "CENTREBOX"; }
+           @top-right { content: "RIGHTBOX"; }
+           @bottom-left-corner { content: "CORNER"; }
+         }`,
+      ),
+    );
+
+    for (const text of pages) {
+      for (const phrase of ["LEFTBOX", "CENTREBOX", "RIGHTBOX", "CORNER"]) {
+        expect(text).toContain(phrase);
+      }
+    }
+  });
+
+  test("gives :first its own margin boxes", async ({ page }) => {
+    const pages = await textPerPage(
+      await renderWithPageCss(
+        page,
+        `@page { size: Letter; margin: 1in; @top-center { content: "ORDINARY"; } }
+         @page :first { @top-center { content: "TITLEPAGE"; } }`,
+      ),
+    );
+
+    expect(pages[0]).toContain("TITLEPAGE");
+    expect(pages[0]).not.toContain("ORDINARY");
+    expect(pages[1]).toContain("ORDINARY");
+  });
+
+  test("places boxes in the margin, clear of the body", async ({ page }) => {
+    const bytes = await renderWithPageCss(
+      page,
+      `@page {
+         size: Letter; margin: 1in;
+         @top-center { content: "HEADERTEXT"; }
+         @bottom-center { content: "FOOTERTEXT"; }
+       }`,
+    );
+
+    const { renderPdfPageToPng } = await import("./pdfjs.js");
+    const { PNG } = await import("pngjs");
+    const png = PNG.sync.read(await renderPdfPageToPng(page, bytes, { scale: 1 }));
+
+    /** Rows containing ink, in PDF points from the top. */
+    const inkRows: number[] = [];
+    for (let y = 0; y < png.height; y += 1) {
+      for (let x = 0; x < png.width; x += 1) {
+        const index = (y * png.width + x) << 2;
+        if ((png.data[index] as number) < 200) {
+          inkRows.push(y);
+          break;
+        }
+      }
+    }
+
+    // The header sits above the 1in top margin's inner edge, the footer below
+    // the bottom one. Both are outside the content area entirely.
+    expect(Math.min(...inkRows), "nothing painted in the top margin").toBeLessThan(72);
+    expect(Math.max(...inkRows), "nothing painted in the bottom margin").toBeGreaterThan(720);
+  });
+
+  test("aligns each box within its own third of the edge", async ({ page }) => {
+    const bytes = await renderWithPageCss(
+      page,
+      `@page {
+         size: Letter; margin: 1in;
+         @top-left { content: "L"; }
+         @top-right { content: "R"; }
+       }`,
+    );
+
+    const { renderPdfPageToPng } = await import("./pdfjs.js");
+    const { PNG } = await import("pngjs");
+    const png = PNG.sync.read(await renderPdfPageToPng(page, bytes, { scale: 1 }));
+
+    const inkColumns: number[] = [];
+    for (let x = 0; x < png.width; x += 1) {
+      for (let y = 0; y < 72; y += 1) {
+        const index = (y * png.width + x) << 2;
+        if ((png.data[index] as number) < 200) {
+          inkColumns.push(x);
+          break;
+        }
+      }
+    }
+
+    // One mark near the left edge of the content area, one near the right.
+    expect(Math.min(...inkColumns)).toBeLessThan(200);
+    expect(Math.max(...inkColumns)).toBeGreaterThan(400);
+  });
+
+  test("draws nothing for a box with no content", async ({ page }) => {
+    const bytes = await renderWithPageCss(
+      page,
+      `@page { size: Letter; margin: 1in; @top-center { color: red; } }`,
+    );
+
+    const { renderPdfPageToPng } = await import("./pdfjs.js");
+    const { PNG } = await import("pngjs");
+    const png = PNG.sync.read(await renderPdfPageToPng(page, bytes, { scale: 1 }));
+
+    // Scanned into one finding rather than asserted per pixel: 44,000
+    // expect() calls take a minute and report the same fact.
+    const inked: string[] = [];
+    for (let y = 0; y < 72 && inked.length < 5; y += 1) {
+      for (let x = 0; x < png.width; x += 1) {
+        const index = (y * png.width + x) << 2;
+        if ((png.data[index] as number) <= 200) {
+          inked.push(`${x},${y}`);
+          break;
+        }
+      }
+    }
+
+    expect(inked, `ink in the top margin: ${inked.join(" ")}`).toEqual([]);
+  });
+});

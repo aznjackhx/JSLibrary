@@ -20,6 +20,7 @@ import type { PageContext } from "../page/context.js";
 import { ptToPx } from "../units.js";
 import type { EmissionContext } from "./emit.js";
 import { paintPage } from "./emit.js";
+import { paintMarginBoxes } from "./margin-boxes.js";
 
 export type { PageSlice } from "../fragment/paginate.js";
 
@@ -66,6 +67,19 @@ export function paintPagedDocument(
       footer,
       footerHeight: slice.reservedBottom,
     });
+
+    // Margin boxes sit outside the content area and are painted after it, so
+    // nothing in the body can overlap a running header.
+    if (page$.marginBoxes.size > 0) {
+      const font = context.marginBoxFont();
+      paintMarginBoxes(page.content, {
+        page: page$,
+        facts: { page: slice.index + 1, pages: slices.length },
+        font,
+        subset: context.subsetFor(font),
+        resourceName: context.resourceNameFor(page, font),
+      });
+    }
   }
 
   return slices;
