@@ -38,8 +38,14 @@ export interface PageSlice {
 }
 
 export interface PaginateOptions {
-  /** Usable height of one page's content box, in CSS pixels. */
-  readonly pageHeight: number;
+  /**
+   * Usable height of a page's content box, in CSS pixels.
+   *
+   * A function rather than a number, because `@page :first` may set different
+   * margins from the rest of the document, which changes how much each page
+   * can hold.
+   */
+  readonly pageHeight: number | ((pageIndex: number) => number);
   /** Total height of the measured column, in CSS pixels. */
   readonly contentHeight: number;
   /**
@@ -53,11 +59,11 @@ export interface PaginateOptions {
 const MIN_ADVANCE = 0.5;
 
 export function paginate(model: FragmentModel, options: PaginateOptions): PageSlice[] {
-  const { pageHeight, contentHeight } = options;
-
-  if (!(pageHeight > 0)) {
-    throw new RangeError(`Page content height must be positive, received ${pageHeight}`);
-  }
+  const { contentHeight } = options;
+  const heightOf =
+    typeof options.pageHeight === "function"
+      ? options.pageHeight
+      : (): number => options.pageHeight as number;
 
   const atoms = model.atoms;
   const slices: PageSlice[] = [];
@@ -70,6 +76,11 @@ export function paginate(model: FragmentModel, options: PaginateOptions): PageSl
   const tables = options.tables ?? [];
 
   while (top < contentHeight || slices.length === 0) {
+    const pageHeight = heightOf(index);
+    if (!(pageHeight > 0)) {
+      throw new RangeError(`Page content height must be positive, received ${pageHeight}`);
+    }
+
     // A page that begins inside a table repeats its header, and that header
     // occupies room this page cannot give to rows.
     const reserved = reservedHeightAt(tables, top, pageHeight);

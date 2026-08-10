@@ -12,6 +12,8 @@ import { Font } from "./fonts/font.js";
 import { FontRegistry, type FontStyle } from "./fonts/resolve.js";
 import { measure } from "./measure/index.js";
 import { resolveOptions, type RenderOptions } from "./options.js";
+import { parsePageRules } from "./page/atrules.js";
+import { pageContextFor, type PageContext } from "./page/context.js";
 import { PdfDocument } from "./pdf/document.js";
 import { ptToPx } from "./units.js";
 
@@ -69,12 +71,55 @@ export async function render(
   // a 120px image measures as 38px of text.
   await decodeImages(element);
 
-  const { content } = resolved.page;
+  // `@page` is invisible to getComputedStyle — no engine applies it outside its
+  // own print path — so the document's stylesheets are read directly.
+  const pageRules = parsePageRules(element.ownerDocument);
 
-  // The container is sized to the page's content box, so the browser breaks
-  // lines exactly where they will fall on the page.
+  const contexts = new Map<number, PageContext>();
+  const contextFor = (pageIndex: number): PageContext => {
+    const existing = contexts.get(pageIndex);
+    if (existing) return existing;
+
+    const built = pageContextFor({
+      rules: pageRules,
+      pageIndex,
+      overrides: {
+        size: options.pageSize,
+        orientation: options.orientation,
+        margins: options.margins,
+      },
+      defaults: {
+        // Units matter here: the resolved size is in points, and a bare number
+        // is read as CSS pixels, which would shrink every default page by a
+        // quarter.
+        size: {
+          width: `${resolved.page.size.width}pt`,
+          height: `${resolved.page.size.height}pt`,
+        },
+        orientation: "portrait",
+        margins: {
+          top: `${resolved.page.margins.top}pt`,
+          right: `${resolved.page.margins.right}pt`,
+          bottom: `${resolved.page.margins.bottom}pt`,
+          left: `${resolved.page.margins.left}pt`,
+        },
+      },
+    });
+    contexts.set(pageIndex, built);
+    return built;
+  };
+
+  // Content is laid out once, at the narrowest content width any page offers,
+  // so a page with wider margins never has to hold text measured for a wider
+  // column. The first three indices cover every combination of :first, :left
+  // and :right; a document whose widths vary beyond that is outside what a
+  // single measurement pass can serve.
+  const measureWidth = Math.min(
+    ...[0, 1, 2].map((pageIndex) => contextFor(pageIndex).content.width),
+  );
+
   const measured = measure(element, {
-    width: ptToPx(content.width),
+    width: ptToPx(measureWidth),
     precise: resolved.textMode === "precise",
   });
 
@@ -95,9 +140,12 @@ export async function render(
     precise: resolved.textMode === "precise",
   });
 
-  paintPagedDocument(pdf, measured.document, context, resolved.page, {
-    ...(resolved.orphans === undefined ? {} : { orphans: resolved.orphans }),
-    ...(resolved.widows === undefined ? {} : { widows: resolved.widows }),
+  paintPagedDocument(pdf, measured.document, context, {
+    contextFor,
+    stranding: {
+      ...(resolved.orphans === undefined ? {} : { orphans: resolved.orphans }),
+      ...(resolved.widows === undefined ? {} : { widows: resolved.widows }),
+    },
   });
   context.finish();
 
