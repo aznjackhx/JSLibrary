@@ -49,7 +49,9 @@ async function renderPaged(page: Page): Promise<Uint8Array> {
 /** Text of every page, in order. */
 async function textPerPage(bytes: Uint8Array): Promise<string[]> {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const task = getDocument({ data: bytes, useSystemFonts: false });
+  // Copied: pdf.js transfers the buffer to its worker and detaches it, so the
+  // caller's bytes would be unusable for any later parse.
+  const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
   const document_ = await task.promise;
 
   try {
@@ -102,7 +104,7 @@ test("puts different content on different pages", async ({ page }) => {
 
 test("gives every page the same declared size", async ({ page }) => {
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const task = getDocument({ data: await renderPaged(page), useSystemFonts: false });
+  const task = getDocument({ data: (await renderPaged(page)).slice(), useSystemFonts: false });
   const document_ = await task.promise;
 
   try {
