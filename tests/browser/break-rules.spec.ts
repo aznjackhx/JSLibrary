@@ -17,6 +17,7 @@ import {
   breakAfterHtml,
   breakBeforeHtml,
   oversizedImageHtml,
+  spanningBoxHtml,
   strandingHtml,
 } from "../fixtures/break-rules-page.js";
 import { ALPHA_IMAGE, renderFontBytes } from "../fixtures/render-page.js";
@@ -245,5 +246,73 @@ test.describe("orphans and widows", () => {
     const counts = spread(pages).filter((count) => count > 0);
 
     expect(counts.length).toBeGreaterThan(1);
+  });
+});
+
+test.describe("box decoration across a break", () => {
+  /**
+   * Count the horizontal border runs of the target box on a page, by looking
+   * for rows of its border colour spanning most of the content width.
+   */
+  async function borderRowsPerPage(page: Page, html: string): Promise<number[]> {
+    const bytes = await renderHtml(page, html);
+    const { renderPdfPageToPng } = await import("./pdfjs.js");
+    const { PNG } = await import("pngjs");
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+    const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+    const pageCount = document_.numPages;
+    await task.destroy();
+
+    const counts: number[] = [];
+    for (let number = 1; number <= pageCount; number += 1) {
+      const png = PNG.sync.read(
+        await renderPdfPageToPng(page, bytes, { pageNumber: number, scale: 1 }),
+      );
+
+      let rows = 0;
+      for (let y = 0; y < png.height; y += 1) {
+        let red = 0;
+        for (let x = 0; x < png.width; x += 1) {
+          const index = (y * png.width + x) << 2;
+          const r = png.data[index] as number;
+          const g = png.data[index + 1] as number;
+          const b = png.data[index + 2] as number;
+          if (r > 150 && g < 100 && b < 100) red += 1;
+        }
+        // A horizontal border run spans most of the box's width.
+        if (red > png.width / 2) rows += 1;
+      }
+      counts.push(rows);
+    }
+    return counts;
+  }
+
+  test("clone draws more border than slice, and closes each fragment", async ({ page }) => {
+    const sliced = await borderRowsPerPage(page, spanningBoxHtml("slice"));
+    const cloned = await borderRowsPerPage(page, spanningBoxHtml("clone"));
+
+    const slicedPages = sliced.filter((count) => count > 0);
+    const clonedPages = cloned.filter((count) => count > 0);
+
+    expect(slicedPages.length, "box should span more than one page").toBeGreaterThan(1);
+    expect(clonedPages.length).toBeGreaterThan(1);
+
+    // Slice draws the box as though continuous and then cut: one border at the
+    // very top, one at the very bottom, and nothing at the seam. Clone closes
+    // every fragment, so each page the box touches gains an extra edge.
+    const total = (counts: number[]): number => counts.reduce((sum, count) => sum + count, 0);
+
+    expect(
+      total(cloned),
+      `slice ${sliced.join("/")} vs clone ${cloned.join("/")}`,
+    ).toBeGreaterThan(total(sliced));
+
+    // Every page the box touches carries at least one horizontal edge under
+    // clone; under slice the middle of a three-page box carries none.
+    for (const count of clonedPages) {
+      expect(count, `clone fragment with ${count} border rows`).toBeGreaterThanOrEqual(4);
+    }
   });
 });

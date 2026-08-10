@@ -130,6 +130,29 @@ ${filler(6, "Trailing")}`,
   );
 }
 
+/**
+ * A bordered box tall enough to span a page boundary.
+ *
+ * `decoration` selects `slice` (the CSS default: the box is drawn as though
+ * continuous and then cut, so no border appears at the seam) or `clone` (the
+ * box is closed on each page and reopened on the next).
+ */
+export function spanningBoxHtml(decoration: "slice" | "clone"): string {
+  const before = LINES_PER_PAGE - 6;
+  const boxLines = Array.from(
+    { length: 20 },
+    (_, index) => `      <p>BOX line ${index + 1}.</p>`,
+  ).join("\n");
+
+  return shell(
+    `${filler(before, "Filler")}
+    <div id="target" style="border: 4px solid rgb(200, 0, 0); background: rgb(240, 240, 250); padding: 6px; box-decoration-break: ${decoration}; -webkit-box-decoration-break: ${decoration};">
+${boxLines}
+    </div>
+${filler(4, "Trailing")}`,
+  );
+}
+
 /** An image taller than the page has nowhere to go and must overflow. */
 export function oversizedImageHtml(imageDataUrl: string): string {
   return shell(

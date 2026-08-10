@@ -174,6 +174,18 @@ function intersectsBand(rect: { y: number; height: number }, band: PageBand): bo
   return rect.y < band.bottom && rect.y + rect.height > band.top;
 }
 
+/**
+ * Cut a rect down to the part of it this page shows.
+ *
+ * Used for `box-decoration-break: clone`, where the fragment on each page is
+ * drawn as a complete box rather than as a slice of a taller one.
+ */
+function clampToBand<T extends { y: number; height: number }>(rect: T, band: PageBand): T {
+  const top = Math.max(rect.y, band.top);
+  const bottom = Math.min(rect.y + rect.height, band.bottom);
+  return { ...rect, y: top, height: Math.max(bottom - top, 0) };
+}
+
 /** Paint a measured subtree onto a page. */
 export function paintNode(
   stream: ContentStream,
@@ -189,7 +201,14 @@ export function paintNode(
   // descendants are inside its box, so the whole subtree can be skipped.
   if (!intersectsBand(node.rect, options.band)) return;
 
-  const rect = transform.rect(node.rect);
+  // `slice`, the CSS default, draws the box as though it were continuous and
+  // then cut — which is exactly what clipping to the page already produces, so
+  // there is nothing to do. `clone` closes the box on each fragment, which
+  // means painting the part on this page as a box in its own right.
+  const decorated =
+    style.boxDecorationBreak === "clone" ? clampToBand(node.rect, options.band) : node.rect;
+
+  const rect = transform.rect(decorated);
 
   const opaque = style.opacity >= 1;
 

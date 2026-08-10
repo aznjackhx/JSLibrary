@@ -152,6 +152,10 @@ export function captureStyle(computed: CSSStyleDeclaration): CapturedStyle {
       parsePx(computed.marginLeft),
     ],
     overflow: computed.overflow,
+    boxDecorationBreak:
+      computed.getPropertyValue("box-decoration-break") ||
+      computed.getPropertyValue("-webkit-box-decoration-break") ||
+      "slice",
     visibility: computed.visibility,
     transform: computed.transform,
     zIndex: computed.zIndex,

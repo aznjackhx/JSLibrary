@@ -54,6 +54,12 @@ export interface CapturedStyle {
   readonly padding: readonly [number, number, number, number];
   readonly margin: readonly [number, number, number, number];
   readonly overflow: string;
+  /**
+   * `slice` (the CSS default) draws the box as though it were continuous and
+   * then cut, so no border appears at the fragment seam. `clone` closes the box
+   * on each fragment, repeating the border and padding.
+   */
+  readonly boxDecorationBreak: string;
   readonly visibility: string;
   readonly transform: string;
   readonly zIndex: string;
