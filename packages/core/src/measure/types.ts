@@ -33,6 +33,8 @@ export interface BorderSide {
 export interface CapturedStyle {
   readonly display: string;
   readonly position: string;
+  /** `left`, `right`, or `none`. Floats leave the normal flow horizontally. */
+  readonly float: string;
   readonly fontFamily: string;
   readonly fontSize: number;
   readonly fontWeight: number;

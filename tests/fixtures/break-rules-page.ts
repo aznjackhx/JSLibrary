@@ -153,6 +153,31 @@ ${filler(4, "Trailing")}`,
   );
 }
 
+/**
+ * Out-of-flow content near a page boundary: a float, an absolutely positioned
+ * box, and a sticky element.
+ */
+export function outOfFlowHtml(): string {
+  const before = LINES_PER_PAGE - 4;
+  return shell(
+    `${filler(before, "Filler")}
+    <div style="position: relative;">
+      <div id="floated" style="float: right; width: 200px; background: rgb(230, 230, 250);">
+        <p>FLOAT line 1.</p>
+        <p>FLOAT line 2.</p>
+        <p>FLOAT line 3.</p>
+        <p>FLOAT line 4.</p>
+      </div>
+      <div id="absolute" style="position: absolute; top: 40px; left: 0; width: 180px; background: rgb(250, 230, 230);">
+        <p>ABSOLUTE line 1.</p>
+        <p>ABSOLUTE line 2.</p>
+      </div>
+      <p id="sticky" style="position: sticky; top: 0;">STICKY line.</p>
+${filler(12, "After")}
+    </div>`,
+  );
+}
+
 /** An image taller than the page has nowhere to go and must overflow. */
 export function oversizedImageHtml(imageDataUrl: string): string {
   return shell(

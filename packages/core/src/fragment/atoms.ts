@@ -14,7 +14,7 @@
 import type { MeasuredElement, MeasuredNode } from "../measure/types.js";
 import { applyStranding, collectLineBlocks, type StrandingDefaults } from "./stranding.js";
 
-export type AtomKind = "line" | "replaced" | "avoid";
+export type AtomKind = "line" | "replaced" | "avoid" | "out-of-flow";
 
 /** A vertical span of measured content that a break must not divide. */
 export interface BreakAtom {
@@ -47,6 +47,9 @@ const FORCING = new Set(["page", "always", "left", "right", "recto", "verso"]);
  */
 const REPLACED_TAGS = new Set(["img", "canvas", "svg", "video", "iframe", "object", "embed"]);
 
+/** `float` values that take an element out of the normal flow. */
+const FLOATED = new Set(["left", "right", "inline-start", "inline-end"]);
+
 function isReplaced(node: MeasuredElement): boolean {
   return REPLACED_TAGS.has(node.tag) || node.imageRef !== undefined;
 }
@@ -78,6 +81,28 @@ export function buildFragmentModel(
     }
 
     const style = node.style;
+
+    // Out-of-flow content does not participate in the normal flow, so a break
+    // chosen from the flow around it says nothing about where it may be cut.
+    // Absolutely positioned and floated boxes are therefore kept whole where
+    // they can be, and `sticky` is treated as the static box it degrades to
+    // once there is no scrolling viewport to stick to.
+    // Tested against the values that actually take an element out of flow,
+    // rather than against "not none": a missing or unexpected value must not
+    // silently reclassify every element in the document.
+    const floated = FLOATED.has(style.float);
+    const positioned = style.position === "absolute" || style.position === "fixed";
+    const outOfFlow = floated || positioned;
+
+    if (outOfFlow && node.rect.height > 0 && !insideAtom) {
+      atoms.push({
+        kind: "out-of-flow",
+        top: node.rect.y,
+        bottom: node.rect.y + node.rect.height,
+      });
+      for (const child of node.children) visit(child, true);
+      return;
+    }
 
     // A forced break before this element means the element starts a page.
     if (FORCING.has(style.breakBefore)) forced.push({ y: node.rect.y });

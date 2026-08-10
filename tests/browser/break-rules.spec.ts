@@ -16,6 +16,7 @@ import {
   avoidInsideHtml,
   breakAfterHtml,
   breakBeforeHtml,
+  outOfFlowHtml,
   oversizedImageHtml,
   spanningBoxHtml,
   strandingHtml,
@@ -313,6 +314,56 @@ test.describe("box decoration across a break", () => {
     // clone; under slice the middle of a three-page box carries none.
     for (const count of clonedPages) {
       expect(count, `clone fragment with ${count} border rows`).toBeGreaterThanOrEqual(4);
+    }
+  });
+});
+
+
+test.describe("out-of-flow content", () => {
+  test("renders floats, absolute boxes and sticky elements exactly once", async ({ page }) => {
+    // The degradation requirement is modest but real: none of these may be
+    // duplicated onto two pages, dropped, or crash fragmentation.
+    const pages = await textPerPage(await renderHtml(page, outOfFlowHtml()));
+    const combined = pages.join("");
+
+    for (const phrase of [
+      "FLOAT line 1.",
+      "FLOAT line 4.",
+      "ABSOLUTE line 1.",
+      "ABSOLUTE line 2.",
+      "STICKY line.",
+    ]) {
+      const occurrences = combined.split(phrase).length - 1;
+      expect(occurrences, `${phrase} appears ${occurrences} times`).toBe(1);
+    }
+  });
+
+  test("keeps a float whole rather than dividing it", async ({ page }) => {
+    const pages = await textPerPage(await renderHtml(page, outOfFlowHtml()));
+
+    const floatPages = new Set<number>();
+    for (let line = 1; line <= 4; line += 1) {
+      floatPages.add(pageContaining(pages, `FLOAT line ${line}.`));
+    }
+    expect([...floatPages], "float divided across pages").toHaveLength(1);
+  });
+
+  test("keeps an absolutely positioned box whole", async ({ page }) => {
+    const pages = await textPerPage(await renderHtml(page, outOfFlowHtml()));
+
+    const absolutePages = new Set([
+      pageContaining(pages, "ABSOLUTE line 1."),
+      pageContaining(pages, "ABSOLUTE line 2."),
+    ]);
+    expect([...absolutePages]).toHaveLength(1);
+  });
+
+  test("still paginates the surrounding flow", async ({ page }) => {
+    const pages = await textPerPage(await renderHtml(page, outOfFlowHtml()));
+
+    expect(pages.length).toBeGreaterThan(1);
+    for (let index = 1; index <= 12; index += 1) {
+      expect(pageContaining(pages, `After line ${index}.`)).toBeGreaterThan(0);
     }
   });
 });

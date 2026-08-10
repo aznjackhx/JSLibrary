@@ -7,12 +7,12 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 5.1 — multi-page output.** `render()` works end to end and
-> paginates: measured DOM in, multi-page vector PDF out, verified against the
-> browser's own rendering within a 0.5% pixel diff. Break *policy* is not in yet
-> — pages are cut at fixed intervals, so a line straddling a boundary is clipped
-> rather than moved. See [`CLAUDE.md`](./CLAUDE.md) for the full brief and
-> milestone plan.
+> **Status: Milestone 5 — fragmentation.** `render()` works end to end:
+> measured DOM in, multi-page vector PDF out. Pages break where content allows,
+> tables repeat their header and footer on every page they span, and output
+> matches the browser's own rendering within a 0.5% pixel diff. Page furniture
+> (`@page` rules, margin boxes, page counters) is M6. See
+> [`CLAUDE.md`](./CLAUDE.md) for the full brief and milestone plan.
 
 ## Approach
 
@@ -53,6 +53,21 @@ this library work offline and behind a corporate firewall.
 | --- | --- | --- |
 | `@pkg/core` | AGPL-3.0 or commercial | Measurement, fragmentation, font subsetting, page furniture, links, bookmarks, SVG |
 | `@pkg/pro` | Commercial only | PDF/A, PDF/UA, AcroForms, signatures, encryption, print production, merge, streaming writer |
+
+## Fragmentation
+
+| Rule | Status |
+| --- | --- |
+| `break-before` / `break-after` (page, always, left, right, recto, verso) | Supported |
+| `break-inside: avoid` | Supported |
+| `orphans` / `widows` | Supported, with `options.orphans` / `options.widows` for engines that do not expose the CSS properties |
+| Repeating `<thead>` on every page a table spans | Supported |
+| `<tfoot>` at the foot of every page a table spans | Supported |
+| Images, canvas and SVG never divided | Supported; an element taller than the page overflows rather than being cut |
+| `box-decoration-break: slice` / `clone` | Both supported |
+| Floats and absolutely positioned boxes | Kept whole, never duplicated |
+| `position: sticky` | Degrades to its static position |
+| Splitting a tall table row across pages | Not yet: a row taller than the page overflows |
 
 ## Font support
 

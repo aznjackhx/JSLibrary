@@ -111,6 +111,7 @@ export function captureStyle(computed: CSSStyleDeclaration): CapturedStyle {
   return {
     display: computed.display,
     position: computed.position,
+    float: computed.getPropertyValue("float") || "none",
     fontFamily: computed.fontFamily,
     fontSize,
     fontWeight: parseWeight(computed.fontWeight),

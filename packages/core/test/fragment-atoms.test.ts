@@ -5,6 +5,8 @@ import type { CapturedStyle, MeasuredElement, MeasuredNode } from "../src/measur
 
 const style = (overrides: Partial<CapturedStyle> = {}): CapturedStyle =>
   ({
+    position: "static",
+    float: "none",
     breakBefore: "auto",
     breakAfter: "auto",
     breakInside: "auto",
@@ -140,5 +142,41 @@ describe("buildFragmentModel", () => {
       element("img", 10, 0, [], {}, { imageRef: "image-1" }),
     ]);
     expect(buildFragmentModel(root).atoms).toEqual([]);
+  });
+});
+
+describe("out-of-flow content", () => {
+  it("keeps a floated box whole", () => {
+    const root = element("div", 0, 200, [
+      element("aside", 10, 80, [text([10, 30, 50])], { float: "right" }),
+    ]);
+    expect(buildFragmentModel(root).atoms).toEqual([
+      { kind: "out-of-flow", top: 10, bottom: 90 },
+    ]);
+  });
+
+  it("keeps an absolutely positioned box whole", () => {
+    const root = element("div", 0, 200, [
+      element("aside", 10, 80, [text([10, 30])], { position: "absolute" }),
+    ]);
+    expect(buildFragmentModel(root).atoms).toEqual([
+      { kind: "out-of-flow", top: 10, bottom: 90 },
+    ]);
+  });
+
+  it("treats sticky as the static box it degrades to without a viewport", () => {
+    const root = element("div", 0, 100, [
+      element("p", 0, 60, [text([0, 20, 40])], { position: "sticky" }),
+    ]);
+    // Ordinary line atoms, merged by the default orphan and widow minimums.
+    expect(buildFragmentModel(root).atoms).toEqual([{ kind: "line", top: 0, bottom: 60 }]);
+  });
+
+  it("does not reclassify in-flow content when float is absent", () => {
+    // A missing value must not be read as "floated" — the whole document would
+    // become one unbreakable span.
+    const root = element("div", 0, 100, [element("p", 0, 60, [text([0, 20, 40])])]);
+    const { atoms } = buildFragmentModel(root, { orphans: 1, widows: 1 });
+    expect(atoms.every((atom) => atom.kind === "line")).toBe(true);
   });
 });
