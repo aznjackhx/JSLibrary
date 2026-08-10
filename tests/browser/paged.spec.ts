@@ -1,10 +1,8 @@
 /**
- * M5.1: multi-page output.
+ * M5.1–5.2: multi-page output, with pages ending where content allows.
  *
- * Break *policy* is not here — bands are cut at fixed intervals, so a line
- * straddling a boundary is clipped rather than moved. What these assert is the
- * part that must hold whatever policy arrives later: content survives
- * pagination intact, in order, exactly once, and nothing escapes the page.
+ * Content survives pagination intact, in order, exactly once, nothing escapes
+ * the page, and — since 5.2 — no page boundary divides a line.
  */
 
 import { readFileSync } from "node:fs";
@@ -185,5 +183,52 @@ test("page count follows the content height", async ({ page }) => {
     () => (document.querySelector("#subject") as HTMLElement).getBoundingClientRect().height,
   );
 
-  expect(pages.length).toBe(Math.ceil(measuredHeight / CONTENT_HEIGHT_PX));
+  // Not an equality: pages now end above a line that would not fit, so each
+  // one can carry slightly less than its full height and the count can exceed
+  // the naive ceiling. It must never be fewer, and the slack is bounded — a
+  // page is never given up for less than one line of content.
+  const minimum = Math.ceil(measuredHeight / CONTENT_HEIGHT_PX);
+  expect(pages.length).toBeGreaterThanOrEqual(minimum);
+  expect(pages.length).toBeLessThanOrEqual(minimum + 1);
+});
+
+
+test("never cuts a line across a page boundary", async ({ page }) => {
+  // The artifact 5.2 exists to remove. A break placed without regard for
+  // content leaves half a line's glyphs painted at the page edge; a break
+  // chosen above the offending line leaves the page short instead.
+  const pages = await textPerPage(await renderPaged(page));
+
+  for (const [index, text] of pages.entries()) {
+    // Every paragraph on a page is whole: its full sentence, not a fragment.
+    const fragments = text.match(/Paragraph \d+ of \d+\./g) ?? [];
+    const partial = text.match(/Paragraph \d+ of \d*$/);
+
+    expect(partial, `page ${index + 1} ends mid-sentence: ${text.slice(-40)}`).toBeNull();
+    expect(fragments.length).toBeGreaterThan(0);
+  }
+});
+
+test("fills each page rather than breaking early", async ({ page }) => {
+  // A correct break is the *latest* legal one. Breaking at the first
+  // opportunity would also never divide a line, and would waste most of
+  // every page.
+  const pdf = await renderPaged(page);
+  const pages = await textPerPage(pdf);
+
+  const perPage = pages.map((text) => (text.match(/Paragraph \d+ of/g) ?? []).length);
+
+  // Page 1 also carries the bordered box, and the last page is short by
+  // definition. The pages in between hold nothing but uniform paragraphs, so
+  // their counts are directly comparable: one holding fewer than its
+  // neighbours means its break was taken earlier than it needed to be.
+  const uniform = perPage.slice(1, -1);
+  expect(uniform.length, "fixture should span enough pages to compare").toBeGreaterThan(0);
+
+  const most = Math.max(...uniform);
+  for (const [index, count] of uniform.entries()) {
+    expect(count, `page ${index + 2} holds ${count} of up to ${most}`).toBeGreaterThanOrEqual(
+      most - 1,
+    );
+  }
 });

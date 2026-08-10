@@ -6,7 +6,7 @@
 
 export { EmissionContext, ownsLine, paintNode, paintPage } from "./emit.js";
 export type { EmitOptions, PageBand, PaintOptions } from "./emit.js";
-export { paginate, paintPagedDocument } from "./pages.js";
+export { paintPagedDocument } from "./pages.js";
 export type { PageSlice } from "./pages.js";
 export { drawImage, embedImage, splitRgba } from "./images.js";
 export type { EmbeddedImage } from "./images.js";
