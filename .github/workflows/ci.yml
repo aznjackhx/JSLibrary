@@ -70,6 +70,19 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      # veraPDF is resolved from Maven Central on first use. Without this the
+      # jars are re-downloaded on every run, which costs time and makes CI
+      # depend on Maven Central being reachable to validate output that has
+      # not changed. Keyed on the script, so bumping the pinned veraPDF
+      # version invalidates it.
+      - name: Cache veraPDF
+        if: matrix.browser == 'chromium'
+        uses: actions/cache@v4
+        with:
+          path: |
+            .verapdf
+            ~/.m2/repository
+          key: verapdf-${{ runner.os }}-${{ hashFiles('scripts/verapdf.mjs', 'scripts/verapdf/Validate.java') }}
       - name: Validate PDF/A output
         if: matrix.browser == 'chromium'
         run: pnpm verapdf
