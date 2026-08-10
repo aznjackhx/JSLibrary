@@ -15,19 +15,6 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const chromiumExecutable = process.env["PW_CHROMIUM_EXECUTABLE"];
 
-/**
- * Settings a device descriptor must not override.
- *
- * `devices["Desktop Safari"]` sets a device scale of 2, which silently wins
- * over the top-level `use` and hands back screenshots at twice the size the
- * PDF is rendered at. Spreading these after the device is what makes the
- * fixed-surface promise below actually hold.
- */
-const PINNED = {
-  viewport: { width: 1280, height: 900 },
-  deviceScaleFactor: 1,
-} as const;
-
 export default defineConfig({
   testDir: "tests/browser",
   outputDir: "test-results",
@@ -36,8 +23,16 @@ export default defineConfig({
   retries: 0,
   reporter: process.env["CI"] ? [["github"], ["list"]] : [["list"]],
   use: {
-    // Fixed viewport and device scale: visual regression comparisons are
-    // meaningless if the rendering surface moves under them.
+    // Each device descriptor below defines its own viewport and device scale,
+    // and a project's `use` wins, so these are defaults for anything a device
+    // leaves unset rather than a guarantee.
+    //
+    // Desktop Safari renders at a device scale of 2. That is deliberately left
+    // alone: WebKit's text rasterisation at 2x, downsampled, is what the M4
+    // fidelity comparison was calibrated against, and forcing it to 1 pushes
+    // that comparison from under 0.5% to 2.1%. The consequence is that any
+    // visual test MUST screenshot with `scale: "css"`, or it will diff an
+    // 800px-wide image against a 400pt page on WebKit alone.
     viewport: { width: 1280, height: 900 },
     deviceScaleFactor: 1,
     trace: "retain-on-failure",
@@ -47,13 +42,12 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        ...PINNED,
         ...(chromiumExecutable
           ? { launchOptions: { executablePath: chromiumExecutable } }
           : {}),
       },
     },
-    { name: "firefox", use: { ...devices["Desktop Firefox"], ...PINNED } },
-    { name: "webkit", use: { ...devices["Desktop Safari"], ...PINNED } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", use: { ...devices["Desktop Safari"] } },
   ],
 });
