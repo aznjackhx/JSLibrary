@@ -17,6 +17,7 @@ import {
 import type { MeasuredDocument } from "../measure/types.js";
 import type { PdfDocument } from "../pdf/document.js";
 import type { PageContext } from "../page/context.js";
+import { stringsForPage, type StringAssignment } from "../page/string-set.js";
 import { ptToPx } from "../units.js";
 import type { EmissionContext } from "./emit.js";
 import { paintPage } from "./emit.js";
@@ -28,6 +29,8 @@ export interface PagedOptions {
   /** Geometry for a given page index. */
   readonly contextFor: (pageIndex: number) => PageContext;
   readonly stranding?: StrandingDefaults;
+  /** Named-string assignments from measurement, in document order. */
+  readonly strings?: readonly StringAssignment[];
 }
 
 /** Paint a measured document across as many pages as it needs. */
@@ -74,7 +77,14 @@ export function paintPagedDocument(
       const font = context.marginBoxFont();
       paintMarginBoxes(page.content, {
         page: page$,
-        facts: { page: slice.index + 1, pages: slices.length },
+        facts: {
+          page: slice.index + 1,
+          pages: slices.length,
+          // A page shows the first assignment falling on it, or the value in
+          // effect when it began — which is what carries a section heading
+          // onto its continuation pages.
+          strings: stringsForPage(options.strings ?? [], slice.top, slice.bottom),
+        },
         font,
         subset: context.subsetFor(font),
         resourceName: context.resourceNameFor(page, font),

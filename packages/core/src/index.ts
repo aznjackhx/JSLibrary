@@ -14,6 +14,7 @@ import { measure } from "./measure/index.js";
 import { resolveOptions, type RenderOptions } from "./options.js";
 import { parsePageRules } from "./page/atrules.js";
 import { pageContextFor, type PageContext } from "./page/context.js";
+import { collectStringSetRules } from "./page/string-set.js";
 import { PdfDocument } from "./pdf/document.js";
 import { ptToPx } from "./units.js";
 
@@ -118,9 +119,14 @@ export async function render(
     ...[0, 1, 2].map((pageIndex) => contextFor(pageIndex).content.width),
   );
 
+  // `string-set` is invisible to the CSSOM for the same reason `@page` is, so
+  // it comes from authored CSS too.
+  const stringSetRules = collectStringSetRules(element.ownerDocument);
+
   const measured = measure(element, {
     width: ptToPx(measureWidth),
     precise: resolved.textMode === "precise",
+    stringSetRules,
   });
 
   const pdf = new PdfDocument({
@@ -146,6 +152,7 @@ export async function render(
       ...(resolved.orphans === undefined ? {} : { orphans: resolved.orphans }),
       ...(resolved.widows === undefined ? {} : { widows: resolved.widows }),
     },
+    strings: measured.strings,
   });
   context.finish();
 

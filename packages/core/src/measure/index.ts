@@ -8,6 +8,7 @@
 import { BaselineProbe } from "./baseline.js";
 import { MeasurementContainer } from "./container.js";
 import { round } from "./styles.js";
+import type { StringAssignment, StringSetRule } from "../page/string-set.js";
 import type { CapturedImage } from "./images.js";
 import type { MeasureResult } from "./types.js";
 import { walkElement } from "./walk.js";
@@ -41,6 +42,8 @@ export interface MeasureOptions {
    * the browser put it. Default true, matching the precise text path.
    */
   readonly precise?: boolean;
+  /** `string-set` rules to evaluate while walking. */
+  readonly stringSetRules?: readonly StringSetRule[];
 }
 
 /**
@@ -57,6 +60,7 @@ export function measure(element: Element, options: MeasureOptions): MeasureResul
     const origin = container.origin;
     const probe = new BaselineProbe(container.element);
     const images = new Map<string, CapturedImage>();
+    const assignments: StringAssignment[] = [];
 
     const root = walkElement(container.content, {
       origin,
@@ -64,6 +68,9 @@ export function measure(element: Element, options: MeasureOptions): MeasureResul
       precise: options.precise ?? true,
       images,
       sourceImages: container.sourceImages,
+      ...(options.stringSetRules
+        ? { stringSet: { rules: options.stringSetRules, assignments } }
+        : {}),
     });
 
     if (!root) {
@@ -77,6 +84,7 @@ export function measure(element: Element, options: MeasureOptions): MeasureResul
         root,
       },
       images,
+      strings: assignments,
     };
   } finally {
     container.destroy();

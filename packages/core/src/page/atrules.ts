@@ -222,17 +222,32 @@ export function parsePageRulesFromText(css: string, startOrder = 0): PageRule[] 
 }
 
 /**
- * Collect every `@page` rule in a document.
+ * Gather the CSS a document is built from, preferring authored source.
  *
- * A stylesheet from another origin throws on access to `cssRules`; that is
- * expected rather than exceptional, and such sheets are skipped. Their `@page`
- * rules are unreachable by any means the platform offers.
+ * The CSSOM is not a faithful record: a browser discards declarations it does
+ * not understand, and every GCPM property is in that category. Probing
+ * Chromium with `h2 { string-set: chapter content() }` and a margin box
+ * containing `content: string(chapter)` returns `h2 { }` and
+ * `@page { @top-center { } }` — both stripped to nothing.
+ *
+ * A `<style>` element's `textContent` is the text the author wrote, so it is
+ * read in preference. Linked stylesheets have no accessible source, so their
+ * rules are taken from the CSSOM and are subject to that stripping; a
+ * cross-origin sheet cannot be read at all. Both limitations are inherent to
+ * the platform rather than to this parser.
  */
-export function parsePageRules(doc: Document): PageRule[] {
-  const rules: PageRule[] = [];
-  let order = 0;
+export function collectCssSources(doc: Document): string[] {
+  const sources: string[] = [];
+
+  for (const element of doc.querySelectorAll("style")) {
+    const text = element.textContent;
+    if (text) sources.push(text);
+  }
 
   for (const sheet of doc.styleSheets) {
+    // Already captured above, and captured better.
+    if (sheet.ownerNode instanceof doc.defaultView!.HTMLStyleElement) continue;
+
     let cssRules: CSSRuleList | undefined;
     try {
       cssRules = sheet.cssRules;
@@ -241,17 +256,26 @@ export function parsePageRules(doc: Document): PageRule[] {
     }
     if (!cssRules) continue;
 
-    for (const rule of cssRules) {
-      // Matched on text rather than on `instanceof CSSPageRule`, because the
-      // engines disagree about what a page rule's children look like and the
-      // text is the one representation all of them produce.
-      const text = rule.cssText;
-      if (!/^\s*@page\b/i.test(text)) continue;
+    for (const rule of cssRules) sources.push(rule.cssText);
+  }
 
-      const parsed = parsePageRulesFromText(text, order);
-      rules.push(...parsed);
-      order += parsed.length;
-    }
+  return sources;
+}
+
+/**
+ * Collect every `@page` rule in a document.
+ *
+ * Read from authored source where available — see `collectCssSources` for why
+ * the CSSOM cannot be trusted with rules a browser does not implement.
+ */
+export function parsePageRules(doc: Document): PageRule[] {
+  const rules: PageRule[] = [];
+  let order = 0;
+
+  for (const source of collectCssSources(doc)) {
+    const parsed = parsePageRulesFromText(source, order);
+    rules.push(...parsed);
+    order += parsed.length;
   }
 
   return rules;

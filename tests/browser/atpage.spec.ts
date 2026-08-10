@@ -320,3 +320,167 @@ test.describe("margin boxes", () => {
     expect(inked, `ink in the top margin: ${inked.join(" ")}`).toEqual([]);
   });
 });
+
+test.describe("named strings", () => {
+  async function renderSectioned(page: Page, pageCss: string): Promise<Uint8Array> {
+    const { sectionedHtml } = await import("../fixtures/atpage-page.js");
+    // Sections are deliberately longer than a page, so that continuation pages
+    // — the ones a named string exists for — actually occur.
+    await page.setContent(sectionedHtml(pageCss, 3, 100), { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    await page.addScriptTag({ content: readFileSync(CORE_BUNDLE, "utf8") });
+
+    const bytes = await page.evaluate(
+      async ({ fontBytes }) => {
+        const core = window.PkgCore as CoreModule;
+        const pdf = await core.render(document.querySelector("#subject") as Element, {
+          metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
+          fonts: [{ family: "Test Mono", data: new Uint8Array(fontBytes) }],
+        });
+        return [...pdf];
+      },
+      { fontBytes: [...renderFontBytes()] },
+    );
+
+    return new Uint8Array(bytes);
+  }
+
+  /**
+   * Both readings of a page, because neither alone is safe.
+   *
+   * `text` concatenates the items, which is the only way body words come back
+   * as "S1 line 1." — the words and the spaces between them are separate text
+   * items. But concatenation also fuses the header "CHAPTER-4" with the footer
+   * "5" into "CHAPTER-45", so anything looking for a margin box reads `items`.
+   */
+  interface PageText {
+    readonly text: string;
+    readonly items: readonly string[];
+  }
+
+  async function pageTexts(bytes: Uint8Array): Promise<PageText[]> {
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+
+    try {
+      const pages: PageText[] = [];
+      for (let number = 1; number <= document_.numPages; number += 1) {
+        const content = await (await document_.getPage(number)).getTextContent();
+        const items = content.items.map((item) => ("str" in item ? item.str : ""));
+        pages.push({ text: items.join(""), items });
+      }
+      return pages;
+    } finally {
+      await task.destroy();
+    }
+  }
+
+  /** Chapters named by this page's margin boxes, not by its body. */
+  function headerChapters(page: PageText): string[] {
+    return page.items
+      .map((item) => /^(?:Section: )?CHAPTER-(\d+)$/.exec(item.trim())?.[1])
+      .filter((value): value is string => value !== undefined);
+  }
+
+  const runningHeaderCss = `
+    h2 { string-set: chapter content(); }
+    @page {
+      size: Letter; margin: 1in;
+      @top-right { content: string(chapter); }
+      @bottom-center { content: counter(page); }
+    }`;
+
+  test("prints the current section in the running header", async ({ page }) => {
+    const pages = await pageTexts(await renderSectioned(page, runningHeaderCss));
+
+    expect(pages.length).toBeGreaterThan(3);
+
+    for (const [index, page_] of pages.entries()) {
+      // Whichever chapter's body is on this page is the one named in its header.
+      const bodyChapters = [...page_.text.matchAll(/S(\d+) line/g)].map((match) => match[1]);
+      if (bodyChapters.length === 0) continue;
+
+      const header = headerChapters(page_)[0];
+      expect(header, `page ${index + 1} has no running header`).toBeDefined();
+      expect(
+        bodyChapters,
+        `page ${index + 1} header says ${header} but carries chapters ${bodyChapters.join()}`,
+      ).toContain(header);
+    }
+  });
+
+  test("carries the heading onto continuation pages", async ({ page }) => {
+    // The distinguishing behaviour of a named string: a page that contains no
+    // heading of its own still names the section it belongs to. Such a page
+    // mentions its chapter exactly once — in the header — whereas the page the
+    // heading actually falls on mentions it twice.
+    const pages = await pageTexts(await renderSectioned(page, runningHeaderCss));
+
+    let continuationPages = 0;
+
+    for (const [index, page_] of pages.entries()) {
+      const bodyChapters = new Set(
+        [...page_.text.matchAll(/S(\d+) line/g)].map((match) => match[1]),
+      );
+      if (bodyChapters.size !== 1) continue;
+
+      const chapter = [...bodyChapters][0] as string;
+      expect(
+        headerChapters(page_),
+        `page ${index + 1} never names chapter ${chapter}`,
+      ).toContain(chapter);
+
+      // The heading itself is body text, so a page carrying it mentions the
+      // chapter once more than its margin boxes do; on a continuation page the
+      // header's mention is the only one.
+      const mentions = page_.text.split(`CHAPTER-${chapter}`).length - 1;
+      const inMarginBoxes = headerChapters(page_).filter((name) => name === chapter).length;
+      if (mentions === inMarginBoxes) continuationPages += 1;
+    }
+
+    expect(continuationPages, "no continuation page in the fixture").toBeGreaterThan(0);
+  });
+
+  test("changes the header when a new section starts", async ({ page }) => {
+    const pages = await pageTexts(await renderSectioned(page, runningHeaderCss));
+    const headers = pages
+      .map((page_) => headerChapters(page_)[0])
+      .filter((value): value is string => value !== undefined);
+
+    // More than one distinct chapter appears across the document's headers.
+    expect(new Set(headers).size).toBeGreaterThan(1);
+    // And they never go backwards.
+    const numbers = headers.map(Number);
+    expect(numbers).toEqual([...numbers].sort((a, b) => a - b));
+  });
+
+  test("combines a named string with literal text", async ({ page }) => {
+    const pages = await pageTexts(
+      await renderSectioned(
+        page,
+        `h2 { string-set: chapter content(); }
+         @page {
+           size: Letter; margin: 1in;
+           @top-left { content: "Section: " string(chapter); }
+         }`,
+      ),
+    );
+
+    for (const page_ of pages) {
+      if (!/S\d+ line/.test(page_.text)) continue;
+      expect(page_.text).toMatch(/Section: CHAPTER-\d+/);
+    }
+  });
+
+  test("prints nothing for a name that was never set", async ({ page }) => {
+    const pages = await pageTexts(
+      await renderSectioned(
+        page,
+        `@page { size: Letter; margin: 1in; @top-center { content: string(missing); } }`,
+      ),
+    );
+
+    for (const page_ of pages) expect(page_.text).not.toContain("undefined");
+  });
+});

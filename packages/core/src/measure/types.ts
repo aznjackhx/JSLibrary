@@ -148,4 +148,6 @@ export interface MeasureResult {
   readonly document: MeasuredDocument;
   /** Captured pixels, keyed by `MeasuredElement.imageRef`. */
   readonly images: ReadonlyMap<string, import("./images.js").CapturedImage>;
+  /** Named-string assignments, in document order. */
+  readonly strings: readonly import("../page/string-set.js").StringAssignment[];
 }

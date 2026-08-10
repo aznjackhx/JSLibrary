@@ -8,6 +8,8 @@
 import { BaselineProbe } from "./baseline.js";
 import { captureImage, type CapturedImage } from "./images.js";
 import { measureTextNode } from "./lines.js";
+import type { StringAssignment, StringSetRule } from "../page/string-set.js";
+import { evaluateStringSetValue } from "../page/string-set.js";
 import { captureStyle, round } from "./styles.js";
 import type { MeasuredElement, MeasuredNode, MeasuredRect } from "./types.js";
 
@@ -26,6 +28,16 @@ export interface WalkOptions {
    * and reading pixels from it would yield nothing.
    */
   readonly sourceImages: ReadonlyMap<Element, HTMLImageElement>;
+  /**
+   * `string-set` rules to match elements against, and the assignments they
+   * produce. Matching happens here because it needs the live element; the
+   * order the walk visits in is document order, which is what named strings
+   * are resolved against.
+   */
+  readonly stringSet?: {
+    readonly rules: readonly StringSetRule[];
+    readonly assignments: StringAssignment[];
+  };
 }
 
 /** Elements that never contribute to output. */
@@ -88,6 +100,22 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
 
   const style = captureStyle(computed);
   const border = relativeRect(element.getBoundingClientRect(), options.origin);
+
+  // Recorded before descending, so assignments come out in document order.
+  if (options.stringSet) {
+    for (const rule of options.stringSet.rules) {
+      let matched = false;
+      try {
+        matched = element.matches(rule.selector);
+      } catch {
+        continue; // A selector the engine cannot parse matches nothing.
+      }
+      if (!matched) continue;
+
+      const value = evaluateStringSetValue(rule.value, element);
+      options.stringSet.assignments.push({ name: rule.name, value, y: border.y });
+    }
+  }
 
   const children: MeasuredNode[] = [];
 
