@@ -10,6 +10,7 @@ export default defineConfig({
       // Mirrors the `paths` in tsconfig.tools.json so tests under tests/ can
       // reach core internals the public API deliberately does not expose.
       { find: /^@pkg\/core\/(.*)\.js$/, replacement: `${root}packages/core/src/$1.ts` },
+      { find: /^@pkg\/core\/pdf$/, replacement: `${root}packages/core/src/pdf/index.ts` },
       { find: /^@pkg\/core$/, replacement: `${root}packages/core/src/index.ts` },
     ],
   },

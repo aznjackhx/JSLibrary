@@ -13,7 +13,11 @@ import { NotImplementedError, RenderError } from "./errors.js";
 import { Font } from "./fonts/font.js";
 import { FontRegistry, type FontStyle } from "./fonts/resolve.js";
 import { measure } from "./measure/index.js";
-import { resolveOptions, type RenderOptions } from "./options.js";
+import {
+  resolveOptions,
+  type RenderExtensionContext,
+  type RenderOptions,
+} from "./options.js";
 import { parsePageRules } from "./page/atrules.js";
 import { pageContextFor, type PageContext } from "./page/context.js";
 import { collectStringSetRules } from "./page/string-set.js";
@@ -26,6 +30,8 @@ export { resolveOptions } from "./options.js";
 export type {
   DocumentMetadata,
   FontInput,
+  RenderExtension,
+  RenderExtensionContext,
   RenderOptions,
   ResolvedOptions,
   TextMode,
@@ -151,6 +157,18 @@ export async function render(
     precise: resolved.textMode === "precise",
   });
 
+  const extensionContext = (): RenderExtensionContext => ({
+    document: pdf,
+    fonts: context.embeddedFonts,
+    metadata: resolved.metadata,
+  });
+
+  // Before anything is painted: a conformance profile may need to claim
+  // catalog entries or reserve objects ahead of the page tree.
+  for (const extension of resolved.extensions) {
+    extension.prepare?.(extensionContext());
+  }
+
   const paged = paintPagedDocument(pdf, measured.document, context, {
     contextFor,
     stranding: {
@@ -193,6 +211,12 @@ export async function render(
   }
 
   context.finish();
+
+  // After painting, so an extension sees the fonts actually embedded and the
+  // pages actually produced.
+  for (const extension of resolved.extensions) {
+    extension.finish?.(extensionContext());
+  }
 
   return pdf.toBytes();
 }

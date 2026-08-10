@@ -5,7 +5,11 @@
  * need control over the object graph, and that is not something a general
  * purpose writer gives up easily.
  *
- * Not part of the public API. `render()` is the only supported entry point.
+ * Not part of the public API for consumers: `render()` is the only supported
+ * entry point, and everything here may change in a patch release. It is
+ * exported under the `@pkg/core/pdf` subpath solely so `@pkg/pro` can build
+ * conformance profiles on the same object model rather than re-implementing
+ * one, which is also why that subpath is documented as unstable.
  */
 
 export { ByteWriter, formatNumber, latin1 } from "./bytes.js";

@@ -80,6 +80,16 @@ export interface RenderOptions {
   readonly links?: boolean;
   /** Emit a PDF outline (bookmarks) built from heading hierarchy. Default true. */
   readonly outline?: boolean;
+  /**
+   * Extensions that may inspect and add to the document as it is built.
+   *
+   * This is the one seam in an otherwise closed API, and it exists for exactly
+   * one reason: conformance profiles like PDF/A cannot be applied to finished
+   * bytes without a full PDF parser. They have to participate while the object
+   * graph is being assembled. `@pkg/pro` is built on this hook; nothing in
+   * core uses it.
+   */
+  readonly extensions?: readonly RenderExtension[];
 }
 
 export interface ResolvedOptions {
@@ -90,6 +100,7 @@ export interface ResolvedOptions {
   readonly widows: number | undefined;
   readonly links: boolean;
   readonly outline: boolean;
+  readonly extensions: readonly RenderExtension[];
   readonly metadata: {
     readonly title: string | undefined;
     readonly author: string | undefined;
@@ -111,6 +122,7 @@ export function resolveOptions(options: RenderOptions = {}): ResolvedOptions {
     widows: options.widows,
     links: options.links ?? true,
     outline: options.outline ?? true,
+    extensions: options.extensions ?? [],
     metadata: {
       title: metadata.title,
       author: metadata.author,
@@ -119,4 +131,31 @@ export function resolveOptions(options: RenderOptions = {}): ResolvedOptions {
       creationDate: metadata.creationDate ?? new Date(),
     },
   };
+}
+
+/**
+ * A stage that participates in building the document.
+ *
+ * Both hooks are optional and both run in the order the extensions were given.
+ * An extension that throws stops the render: it asked to shape the output, so
+ * failing quietly would produce a file that claims a conformance it does not
+ * have.
+ */
+export interface RenderExtension {
+  /** Identifies the extension in errors. */
+  readonly name: string;
+  /** Runs before any page is painted. */
+  readonly prepare?: (context: RenderExtensionContext) => void;
+  /** Runs after every page is painted, before the bytes are written. */
+  readonly finish?: (context: RenderExtensionContext) => void;
+}
+
+/** What an extension is given. */
+export interface RenderExtensionContext {
+  /** The document being assembled. */
+  readonly document: import("./pdf/document.js").PdfDocument;
+  /** Fonts embedded so far, so a profile can check or constrain them. */
+  readonly fonts: readonly import("./fonts/font.js").Font[];
+  /** Metadata the caller supplied, already resolved. */
+  readonly metadata: ResolvedOptions["metadata"];
 }

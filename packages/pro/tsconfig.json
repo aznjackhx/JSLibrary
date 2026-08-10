@@ -5,7 +5,8 @@
     "outDir": ".tsbuild",
     "types": [],
     "paths": {
-      "@pkg/core": ["../core/src/index.ts"]
+      "@pkg/core": ["../core/src/index.ts"],
+      "@pkg/core/pdf": ["../core/src/pdf/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "test/**/*.ts"],

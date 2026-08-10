@@ -63,6 +63,11 @@ export class EmissionContext {
     this.precise = options.precise;
   }
 
+  /** Faces this document has embedded, in first-use order. */
+  get embeddedFonts(): readonly Font[] {
+    return [...this.#subsets.keys()];
+  }
+
   /** The subset accumulating for a face, created on first use. */
   subsetFor(font: Font): FontSubset {
     let subset = this.#subsets.get(font);

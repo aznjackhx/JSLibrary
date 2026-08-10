@@ -6,6 +6,7 @@
     "rootDir": ".",
     "paths": {
       "@pkg/core": ["./packages/core/src/index.ts"],
+      "@pkg/core/pdf": ["./packages/core/src/pdf/index.ts"],
       // Tests reach into internals the public API deliberately does not expose.
       "@pkg/core/*": ["./packages/core/src/*"]
     }
