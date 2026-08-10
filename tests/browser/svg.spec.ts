@@ -61,9 +61,10 @@ async function renderHtml(page: Page, html: string, width: number, height: numbe
 
 test("draws the artwork as vector paths, matching the browser", async ({ page }, testInfo) => {
   await page.setContent(svgHtml(), { waitUntil: "load" });
-  const browserPng = await (
-    await page.waitForSelector("#subject")
-  ).screenshot({ type: "png" });
+  // `scale: "css"` matters: Playwright's Desktop Safari descriptor renders at
+  // a device scale of 2, and the default "device" scale would hand back an
+  // 800x640 screenshot to compare against a 400x320 page.
+  const browserPng = await page.locator("#subject").screenshot({ scale: "css" });
 
   const pdf = await renderHtml(page, svgHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
   const pdfPng = await renderPdfPageToPng(page, pdf, { scale: PX_PER_PT });
@@ -85,7 +86,7 @@ test("the comparison detects a misplacement", async ({ page }, testInfo) => {
   // Without this the test above proves nothing: a tolerance loose enough to
   // pass anything is not measuring the drawing.
   await page.setContent(svgHtml(), { waitUntil: "load" });
-  const browserPng = await (await page.waitForSelector("#subject")).screenshot({ type: "png" });
+  const browserPng = await page.locator("#subject").screenshot({ scale: "css" });
 
   const pdf = await renderHtml(page, svgHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
   const pdfPng = await renderPdfPageToPng(page, pdf, { scale: PX_PER_PT });

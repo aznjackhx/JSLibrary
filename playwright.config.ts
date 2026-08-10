@@ -15,6 +15,19 @@ import { defineConfig, devices } from "@playwright/test";
  */
 const chromiumExecutable = process.env["PW_CHROMIUM_EXECUTABLE"];
 
+/**
+ * Settings a device descriptor must not override.
+ *
+ * `devices["Desktop Safari"]` sets a device scale of 2, which silently wins
+ * over the top-level `use` and hands back screenshots at twice the size the
+ * PDF is rendered at. Spreading these after the device is what makes the
+ * fixed-surface promise below actually hold.
+ */
+const PINNED = {
+  viewport: { width: 1280, height: 900 },
+  deviceScaleFactor: 1,
+} as const;
+
 export default defineConfig({
   testDir: "tests/browser",
   outputDir: "test-results",
@@ -34,12 +47,13 @@ export default defineConfig({
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
+        ...PINNED,
         ...(chromiumExecutable
           ? { launchOptions: { executablePath: chromiumExecutable } }
           : {}),
       },
     },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] } },
+    { name: "firefox", use: { ...devices["Desktop Firefox"], ...PINNED } },
+    { name: "webkit", use: { ...devices["Desktop Safari"], ...PINNED } },
   ],
 });
