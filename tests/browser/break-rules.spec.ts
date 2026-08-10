@@ -203,15 +203,24 @@ test.describe("orphans and widows", () => {
   const spread = (pages: readonly string[]): number[] =>
     pages.map((text) => (text.match(/STRANDED line \d+\./g) ?? []).length);
 
+  /**
+   * Minimums are driven through options rather than CSS.
+   *
+   * Firefox implements neither `orphans` nor `widows`, so a fixture that sets
+   * them in CSS tests whether the engine supports the property rather than
+   * whether this library honours the value. The option path works on every
+   * engine, and is the one a document needing identical pagination everywhere
+   * would use anyway. The CSS path is covered separately, where supported.
+   */
   test("does not strand a single line at the foot of a page", async ({ page }) => {
-    // The fixture leaves room for exactly one line at the page foot, which is
-    // what a break ignoring orphans would put there.
-    const pages = await textPerPage(await renderHtml(page, strandingHtml(2, 2)));
+    const pages = await textPerPage(
+      await renderHtml(page, strandingHtml(1, 1), { orphans: 2, widows: 2 }),
+    );
     const counts = spread(pages).filter((count) => count > 0);
 
     expect(counts.length).toBeGreaterThan(0);
-    // With orphans and widows both 2, no page may carry a single line of it:
-    // one at the foot is an orphan, one at the head is a widow.
+    // With both minimums at 2, no page may carry a single line of it: one at
+    // the foot is an orphan, one at the head is a widow.
     for (const count of counts) {
       expect(count, `a page carries ${count} line(s) of the paragraph`).toBeGreaterThanOrEqual(2);
     }
@@ -220,33 +229,43 @@ test.describe("orphans and widows", () => {
   test("moves the paragraph whole when it cannot be split acceptably", async ({ page }) => {
     // Minimums larger than half the paragraph make every internal break
     // illegal, so the whole thing must move.
-    const pages = await textPerPage(await renderHtml(page, strandingHtml(4, 4)));
+    const pages = await textPerPage(
+      await renderHtml(page, strandingHtml(1, 1), { orphans: 4, widows: 4 }),
+    );
     const counts = spread(pages).filter((count) => count > 0);
 
     expect(counts, "paragraph was split despite no legal break").toHaveLength(1);
     expect(counts[0]).toBe(6);
   });
 
-  test("honours minimums supplied through options", async ({ page }) => {
-    // The engine may not expose the CSS properties at all — Firefox does not —
-    // so the same result has to be reachable from options.
-    const viaOptions = await textPerPage(
-      await renderHtml(page, strandingHtml(1, 1), { orphans: 4, widows: 4 }),
-    );
-    const counts = viaOptions.map(
-      (text) => (text.match(/STRANDED line \d+\./g) ?? []).length,
-    ).filter((count) => count > 0);
-
-    expect(counts).toHaveLength(1);
-  });
-
   test("allows a split when both sides meet their minimum", async ({ page }) => {
     // With minimums of 1 the paragraph may divide wherever it likes, so the
     // page fills rather than pushing the paragraph over.
-    const pages = await textPerPage(await renderHtml(page, strandingHtml(1, 1)));
+    const pages = await textPerPage(
+      await renderHtml(page, strandingHtml(1, 1), { orphans: 1, widows: 1 }),
+    );
     const counts = spread(pages).filter((count) => count > 0);
 
     expect(counts.length).toBeGreaterThan(1);
+  });
+
+  test("reads the CSS properties where the engine exposes them", async ({ page }) => {
+    const supported = await page.evaluate(() => {
+      const probe = document.createElement("p");
+      probe.style.setProperty("orphans", "4");
+      document.body.append(probe);
+      const value = getComputedStyle(probe).getPropertyValue("orphans");
+      probe.remove();
+      return value.trim() !== "";
+    });
+
+    test.skip(!supported, "engine does not implement orphans/widows");
+
+    // Same expectation as the option path above, reached through CSS.
+    const pages = await textPerPage(await renderHtml(page, strandingHtml(4, 4)));
+    const counts = spread(pages).filter((count) => count > 0);
+
+    expect(counts).toHaveLength(1);
   });
 });
 
