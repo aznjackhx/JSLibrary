@@ -1,0 +1,257 @@
+/**
+ * Resolving which `@page` rules apply to a given page.
+ *
+ * A document may declare several: a bare `@page` for everything, `:first` for
+ * the title page, `:left` and `:right` for duplex printing. They cascade, and
+ * the order is specified — a bare rule is weakest, `:left`/`:right` beat it,
+ * and `:first` beats both.
+ */
+
+import { toPt, type Pt } from "../units.js";
+import type { MarginBoxName, PageRule } from "./atrules.js";
+import {
+  resolveMargins,
+  resolvePageSize,
+  type Margins,
+  type MarginsInput,
+  type Orientation,
+  type PageSize,
+  type PageSizeInput,
+} from "./geometry.js";
+
+/** Specificity of each page pseudo-class, lowest first. */
+const PSEUDO_WEIGHT: Record<string, number> = {
+  left: 1,
+  right: 1,
+  blank: 1,
+  first: 2,
+};
+
+/**
+ * Does a rule apply to this page?
+ *
+ * `blank` says whether the page was generated to satisfy a side-specific
+ * break rather than to hold content. It cannot be derived from the index —
+ * only pagination knows — so it is passed in.
+ */
+export function ruleApplies(rule: PageRule, pageIndex: number, blank = false): boolean {
+  for (const pseudo of rule.pseudos) {
+    switch (pseudo) {
+      case "first":
+        if (pageIndex !== 0) return false;
+        break;
+      case "right":
+        // Page one is a right-hand page in a left-to-right document.
+        if (pageIndex % 2 !== 0) return false;
+        break;
+      case "left":
+        if (pageIndex % 2 !== 1) return false;
+        break;
+      case "blank":
+        if (!blank) return false;
+        break;
+      default:
+        // A named page (`@page cover`) needs `page: cover` on an element,
+        // which is not supported yet; the rule is ignored rather than applied
+        // to everything.
+        return false;
+    }
+  }
+  return true;
+}
+
+function weight(rule: PageRule): number {
+  return rule.pseudos.reduce((total, pseudo) => total + (PSEUDO_WEIGHT[pseudo] ?? 0), 0);
+}
+
+/**
+ * Merge the rules that apply to a page, weakest first.
+ *
+ * Returns the declarations for the page box and for each margin box.
+ */
+export function cascadeFor(
+  rules: readonly PageRule[],
+  pageIndex: number,
+  blank = false,
+): {
+  declarations: Map<string, string>;
+  marginBoxes: Map<MarginBoxName, Map<string, string>>;
+} {
+  const applicable = rules
+    .filter((rule) => ruleApplies(rule, pageIndex, blank))
+    .sort((a, b) => weight(a) - weight(b) || a.order - b.order);
+
+  const declarations = new Map<string, string>();
+  const marginBoxes = new Map<MarginBoxName, Map<string, string>>();
+
+  for (const rule of applicable) {
+    for (const [property, value] of rule.declarations) declarations.set(property, value);
+
+    for (const [name, box] of rule.marginBoxes) {
+      const merged = marginBoxes.get(name) ?? new Map<string, string>();
+      for (const [property, value] of box) merged.set(property, value);
+      marginBoxes.set(name, merged);
+    }
+  }
+
+  return { declarations, marginBoxes };
+}
+
+/**
+ * Interpret the `size` property.
+ *
+ * Accepts a page-size keyword, an orientation keyword, one length (a square
+ * page), or two lengths. `auto` leaves the caller's own choice in place.
+ */
+export function parseSize(
+  value: string,
+): { size?: PageSizeInput; orientation?: Orientation } | undefined {
+  const tokens = value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0 || tokens.includes("auto")) return undefined;
+
+  let size: PageSizeInput | undefined;
+  let orientation: Orientation | undefined;
+  const lengths: string[] = [];
+
+  for (const token of tokens) {
+    if (token === "portrait" || token === "landscape") {
+      orientation = token;
+      continue;
+    }
+    if (/^[\d.]/.test(token)) {
+      lengths.push(token);
+      continue;
+    }
+    // Anything else is taken as a page-size keyword; an unknown one is
+    // reported by resolvePageSize rather than silently ignored.
+    size = token;
+  }
+
+  if (lengths.length === 1) {
+    const side = lengths[0] as string;
+    size = { width: side, height: side };
+  } else if (lengths.length >= 2) {
+    size = { width: lengths[0] as string, height: lengths[1] as string };
+  }
+
+  const result: { size?: PageSizeInput; orientation?: Orientation } = {};
+  if (size !== undefined) result.size = size;
+  if (orientation !== undefined) result.orientation = orientation;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** Interpret the margin shorthand and longhands into four sides. */
+export function parseMargins(
+  declarations: ReadonlyMap<string, string>,
+  fallback: MarginsInput,
+): MarginsInput {
+  const shorthand = declarations.get("margin");
+  let base: MarginsInput = fallback;
+
+  if (shorthand) {
+    // CSS shorthand expansion: one value applies to all four sides, two to
+    // vertical then horizontal, three leave the left mirroring the right.
+    const parts = shorthand.trim().split(/\s+/).filter(Boolean);
+    const top = parts[0];
+    if (top !== undefined) {
+      const right = parts[1] ?? top;
+      const bottom = parts[2] ?? top;
+      const left = parts[3] ?? right;
+      base = { top, right, bottom, left };
+    }
+  }
+
+  const sides = ["top", "right", "bottom", "left"] as const;
+  const explicit = sides.filter((side) => declarations.has(`margin-${side}`));
+  if (explicit.length === 0) return base;
+
+  const resolved = resolveMargins(base);
+  const merged: Record<string, string | number> = {
+    top: resolved.top,
+    right: resolved.right,
+    bottom: resolved.bottom,
+    left: resolved.left,
+  };
+
+  // Longhands are in points once resolved, so overrides are converted to match.
+  for (const side of explicit) {
+    merged[side] = toPt(declarations.get(`margin-${side}`) as string);
+  }
+
+  return {
+    top: `${merged["top"] as number}pt`,
+    right: `${merged["right"] as number}pt`,
+    bottom: `${merged["bottom"] as number}pt`,
+    left: `${merged["left"] as number}pt`,
+  };
+}
+
+export interface PageContextInput {
+  readonly rules: readonly PageRule[];
+  readonly pageIndex: number;
+  /** Caller's explicit choices, which win over the stylesheet. */
+  readonly overrides: {
+    readonly size?: PageSizeInput | undefined;
+    readonly orientation?: Orientation | undefined;
+    readonly margins?: MarginsInput | undefined;
+  };
+  /** Used when neither the stylesheet nor the caller specifies. */
+  readonly defaults: {
+    readonly size: PageSizeInput;
+    readonly orientation: Orientation;
+    readonly margins: MarginsInput;
+  };
+  /** True for a page generated to satisfy a side-specific break. */
+  readonly blank?: boolean | undefined;
+}
+
+export interface PageContext {
+  readonly size: PageSize;
+  readonly margins: Margins;
+  readonly content: { x: Pt; y: Pt; width: Pt; height: Pt };
+  readonly marginBoxes: ReadonlyMap<MarginBoxName, ReadonlyMap<string, string>>;
+}
+
+/**
+ * Build the geometry and furniture for one page.
+ *
+ * Precedence is stylesheet over defaults, caller over both: a document's own
+ * print CSS is honoured when nothing was asked for, and an explicit option
+ * always wins, because a caller who names a page size means it.
+ */
+export function pageContextFor(input: PageContextInput): PageContext {
+  const { declarations, marginBoxes } = cascadeFor(
+    input.rules,
+    input.pageIndex,
+    input.blank ?? false,
+  );
+
+  const fromCss = declarations.has("size")
+    ? parseSize(declarations.get("size") as string)
+    : undefined;
+
+  const size = resolvePageSize(
+    input.overrides.size ?? fromCss?.size ?? input.defaults.size,
+    input.overrides.orientation ?? fromCss?.orientation ?? input.defaults.orientation,
+  );
+
+  const margins = resolveMargins(
+    input.overrides.margins ?? parseMargins(declarations, input.defaults.margins),
+  );
+
+  const width = size.width - margins.left - margins.right;
+  const height = size.height - margins.top - margins.bottom;
+
+  if (width <= 0 || height <= 0) {
+    throw new RangeError(
+      `Margins leave no content area: ${width}x${height}pt on a ${size.width}x${size.height}pt page`,
+    );
+  }
+
+  return {
+    size,
+    margins,
+    content: { x: margins.left, y: margins.bottom, width, height },
+    marginBoxes,
+  };
+}

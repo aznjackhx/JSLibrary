@@ -1,0 +1,12 @@
+{
+  // Used by tsup for the .d.ts rollup. Project-reference settings (composite,
+  // declaration maps) confuse tsup's synthetic dts program, so they are off
+  // here; `tsc --build` still typechecks with them on via tsconfig.json.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declarationMap": false,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"]
+}

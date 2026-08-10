@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "outDir": ".tsbuild/tools",
+    "rootDir": ".",
+    "paths": {
+      "@pkg/core": ["./packages/core/src/index.ts"],
+      // Source, not built declarations. Pointing at dist made typecheck
+      // depend on build order, which passed locally with a warm dist and
+      // failed in CI, where typecheck runs first.
+      "@pkg/pro": ["./packages/pro/src/index.ts"],
+      // Tests reach into internals the public API deliberately does not expose.
+      "@pkg/core/*": ["./packages/core/src/*"]
+    }
+  },
+  "include": [
+    "tests/**/*.ts",
+    "playwright.config.ts",
+    "vitest.config.ts",
+    // Listed because a test imports @pkg/pro's types from source; a mapped
+    // path must resolve to a file this project actually owns.
+    "packages/pro/src/**/*.ts"
+  ],
+  "references": [{ "path": "./packages/core" }]
+}

@@ -1,0 +1,18 @@
+{
+  // See packages/core/tsconfig.build.json — same reasoning.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "declarationMap": false,
+    "incremental": false,
+    // Resolve core through its built declarations rather than its source, the
+    // way a consumer does. Pointing at the source pulls files outside this
+    // package's rootDir into the declaration build, which tsc refuses.
+    "paths": {
+      "@pkg/core": ["../core/dist/index.d.ts"],
+      "@pkg/core/pdf": ["../core/dist/pdf.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "references": []
+}
