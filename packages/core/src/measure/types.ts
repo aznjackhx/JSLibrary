@@ -123,6 +123,8 @@ export interface MeasuredElement {
    * embedding megabytes of image data in it would make golden diffs useless.
    */
   readonly imageRef: string | undefined;
+  /** Vector geometry, for an inline `<svg>`. */
+  readonly svg: import("./svg.js").CapturedSvg | undefined;
   /** The `href` attribute exactly as authored; `#section` stays a fragment. */
   readonly href: string | undefined;
   /** The same href resolved against the document's base URL. */

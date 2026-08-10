@@ -25,6 +25,7 @@ import type { Rect as PageRect } from "../page/geometry.js";
 import { ptToPx } from "../units.js";
 import { drawImage, embedImage, type EmbeddedImage } from "./images.js";
 import { paintBackground, paintBorders } from "./paint.js";
+import { paintSvg } from "./svg.js";
 import { emitLine, emitTextDecoration } from "./text.js";
 import { PageTransform } from "./transform.js";
 
@@ -229,6 +230,7 @@ export function paintNode(
       paintBackground(target, rect, style, transform);
       paintBorders(target, rect, style, transform);
       paintImage(target, node, options);
+      paintVector(target, node, options);
     }
 
     for (const child of node.children) {
@@ -255,6 +257,29 @@ export function paintNode(
   stream.scoped((scoped) => {
     scoped.setExtGState(resourceName);
     paintContents(scoped);
+  });
+}
+
+/**
+ * Draw an inline SVG as vector paths.
+ *
+ * Placed against the element's content box, which is the area the browser laid
+ * the SVG out into.
+ */
+function paintVector(
+  stream: ContentStream,
+  node: MeasuredElement,
+  options: PaintOptions,
+): void {
+  if (!node.svg) return;
+
+  paintSvg(stream, node.svg, node.contentRect, options.transform, {
+    extGStateFor: (opacity) => {
+      const state = options.context.document.add(
+        dict({ Type: name("ExtGState"), ca: opacity, CA: opacity }),
+      );
+      return options.page.resources.register("ExtGState", state);
+    },
   });
 }
 

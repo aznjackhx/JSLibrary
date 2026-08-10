@@ -95,6 +95,34 @@ export class ContentStream {
     return this;
   }
 
+  /** `J` — line cap: 0 butt, 1 round, 2 projecting square. */
+  setLineCap(cap: 0 | 1 | 2): this {
+    this.#op("J", cap);
+    return this;
+  }
+
+  /** `j` — line join: 0 miter, 1 round, 2 bevel. */
+  setLineJoin(join: 0 | 1 | 2): this {
+    this.#op("j", join);
+    return this;
+  }
+
+  /**
+   * `d` — dash pattern.
+   *
+   * An empty array is a solid line. A pattern of all zeros is rejected by
+   * viewers, so it is normalised to solid here rather than written out.
+   */
+  setDash(pattern: readonly number[], phase = 0): this {
+    const usable = pattern.filter((entry) => Number.isFinite(entry) && entry >= 0);
+    const dashes = usable.some((entry) => entry > 0) ? usable : [];
+
+    this.#writer.writeAscii(
+      `[${dashes.map((entry) => formatNumber(entry)).join(" ")}] ${formatNumber(dashes.length === 0 ? 0 : phase)} d\n`,
+    );
+    return this;
+  }
+
   /** `gs` — apply a named ExtGState (opacity, blend mode). */
   setExtGState(resourceName: string): this {
     this.#writer.writeAscii(`${encodeName(resourceName)} gs\n`);

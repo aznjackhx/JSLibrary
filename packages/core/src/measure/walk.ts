@@ -7,6 +7,7 @@
 
 import { BaselineProbe } from "./baseline.js";
 import { captureImage, type CapturedImage } from "./images.js";
+import { captureSvg } from "./svg.js";
 import { measureTextNode } from "./lines.js";
 import type { StringAssignment, StringSetRule } from "../page/string-set.js";
 import { evaluateStringSetValue } from "../page/string-set.js";
@@ -119,7 +120,9 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
 
   const children: MeasuredNode[] = [];
 
-  for (const child of element.childNodes) {
+  const isSvgRoot = element instanceof view.SVGSVGElement;
+
+  for (const child of isSvgRoot ? [] : element.childNodes) {
     if (child.nodeType === Node.TEXT_NODE) {
       const lines = measureTextNode(child as Text, {
         origin: options.origin,
@@ -143,6 +146,12 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
   const anchor = element instanceof view.HTMLAnchorElement ? element : undefined;
   const image = element instanceof view.HTMLImageElement ? element : undefined;
 
+  // An inline SVG is read as vector geometry, not descended into: its children
+  // are shapes in their own coordinate system, and walking them as ordinary
+  // elements would produce boxes that mean nothing.
+  const svg =
+    element instanceof view.SVGSVGElement ? captureSvg(element) : undefined;
+
   // Pixels have to be read now: emission runs against plain data, with no DOM
   // left to read from.
   let imageRef: string | undefined;
@@ -165,6 +174,7 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
     style,
     src: image?.currentSrc || image?.src || undefined,
     imageRef,
+    svg,
     href: anchor?.getAttribute("href") ?? undefined,
     // The IDL property resolves against the document's base URL, which is what
     // a URI action needs — a relative href would be meaningless once the PDF

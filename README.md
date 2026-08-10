@@ -7,15 +7,18 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 6 complete — page furniture.** `render()` works end to
+> **Status: Milestone 7 complete — links, bookmarks and vector SVG.** `render()` works end to
 > end: measured DOM in, multi-page vector PDF out. Pages break where content
 > allows, tables repeat their header and footer on every page they span, and
 > output matches the browser's own rendering within a 0.5% pixel diff. The
 > document's own `@page` rules drive page size and margins, all sixteen margin
 > boxes print, `counter(page)`/`counter(pages)` and GCPM named strings resolve,
-> and `break-before: right` generates the blank page it implies. Links,
-> bookmarks and vector SVG are M7. See [`CLAUDE.md`](./CLAUDE.md) for the full
-> brief and milestone plan.
+> and `break-before: right` generates the blank page it implies. `<a href>`
+> becomes a link annotation per line box, in-document anchors become GoTo
+> destinations, headings become a bookmark tree, and inline SVG becomes real
+> vector paths — no rasterization anywhere. License verification and the Pro
+> package are M8. See [`CLAUDE.md`](./CLAUDE.md) for the full brief and
+> milestone plan.
 >
 > Note that `@page` and `string-set` are read from authored CSS rather than the
 > CSSOM: a browser discards declarations it does not implement, so a `<style>`
@@ -92,6 +95,41 @@ Fonts are parsed and subset in-house rather than with fontkit, which bundles to
 
 Subset fonts are embedded as `CIDFontType2` with `Identity-H` encoding and a
 `ToUnicode` CMap, so the full Unicode range works and extracted text round-trips.
+
+## SVG
+
+Inline `<svg>` is converted to PDF path operators. Nothing is rasterized, so a
+drawing stays sharp at any zoom and costs a few hundred bytes.
+
+| Feature | Status |
+| --- | --- |
+| `path` (all commands, absolute and relative, arcs and smooth curves) | Supported |
+| `rect` (with `rx`/`ry`), `circle`, `ellipse`, `line`, `polyline`, `polygon` | Supported |
+| `g` and nested `transform` (matrix, translate, scale, rotate, skew) | Supported |
+| `viewBox` and `preserveAspectRatio`, including `slice` and `none` | Supported |
+| Fill and stroke colour, `fill-rule`, width, cap, join, dashes, opacity | Supported |
+| Styling from CSS rules, presentation attributes or inheritance | Supported: computed style is what is read |
+| Gradients and patterns (`fill="url(#id)"`) | Not supported: the shape is left unpainted rather than filled with a wrong flat colour |
+| `text` inside SVG | Not supported |
+| `use`, `clipPath`, `mask`, filters | Not supported: they draw nothing rather than something wrong |
+
+Quadratic curves are converted to cubics exactly. Arcs have no exact Bézier
+form and are split into segments of at most 90°, which is the standard
+construction and is accurate to far less than a printer dot.
+
+## Interactivity
+
+| Feature | Status |
+| --- | --- |
+| `<a href>` → link annotation | Supported, one rectangle per line box a link occupies |
+| Link split across a page break | Supported: each page gets its own clipped rectangle |
+| In-document `#anchor` → `GoTo` destination | Supported |
+| Relative hrefs | Resolved against the document's base URL |
+| A fragment naming no element | No annotation is written, rather than one that goes nowhere |
+| Named destinations (`report.pdf#sec-2`) | Published as a `/Names /Dests` name tree |
+| Heading hierarchy → bookmarks | Supported; a skipped level nests under whatever is open |
+
+Both can be turned off with `options.links` and `options.outline`.
 
 ## Development
 

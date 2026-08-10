@@ -70,6 +70,7 @@ function element(
     style,
     src: undefined,
     imageRef: undefined,
+    svg: undefined,
     href: undefined,
     hrefResolved: undefined,
     children,
