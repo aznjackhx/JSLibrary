@@ -14,5 +14,12 @@ export {
   strandingPositions,
 } from "./stranding.js";
 export type { LineBlock, StrandingDefaults } from "./stranding.js";
+export {
+  collectRepeatingTables,
+  footerRepeatAt,
+  headerRepeatAt,
+  reservedHeightAt,
+} from "./tables.js";
+export type { RepeatingTable, TableFurniture } from "./tables.js";
 export { paginate } from "./paginate.js";
 export type { PageSlice, PaginateOptions } from "./paginate.js";

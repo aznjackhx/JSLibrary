@@ -13,6 +13,7 @@
  */
 
 import type { BreakAtom, FragmentModel } from "./atoms.js";
+import { reservedHeightAt, type RepeatingTable } from "./tables.js";
 
 /** One page's slice of the measured column. */
 export interface PageSlice {
@@ -27,6 +28,13 @@ export interface PageSlice {
    * want to know about.
    */
   readonly overflowed: boolean;
+  /**
+   * Height given up at the top of this page to repeated table headers, in CSS
+   * pixels. Content is painted below it.
+   */
+  readonly reservedTop: number;
+  /** Height given up at the foot of the page to repeated table footers. */
+  readonly reservedBottom: number;
 }
 
 export interface PaginateOptions {
@@ -34,6 +42,11 @@ export interface PaginateOptions {
   readonly pageHeight: number;
   /** Total height of the measured column, in CSS pixels. */
   readonly contentHeight: number;
+  /**
+   * Tables whose header and footer repeat. A page beginning inside one has
+   * less room for content, which changes where the page can end.
+   */
+  readonly tables?: readonly RepeatingTable[];
 }
 
 /** Smallest advance that counts as progress, guarding against a stalled loop. */
@@ -54,8 +67,16 @@ export function paginate(model: FragmentModel, options: PaginateOptions): PageSl
   // Atoms strictly above `top` are already placed; this marks where to resume.
   let cursor = 0;
 
+  const tables = options.tables ?? [];
+
   while (top < contentHeight || slices.length === 0) {
-    const limit = top + pageHeight;
+    // A page that begins inside a table repeats its header, and that header
+    // occupies room this page cannot give to rows.
+    const reserved = reservedHeightAt(tables, top, pageHeight);
+    const reservedTop = reserved.top;
+    const reservedBottom = reserved.bottom;
+    const usable = Math.max(pageHeight - reservedTop - reservedBottom, MIN_ADVANCE);
+    const limit = top + usable;
 
     // The earliest demanded break below this page's start wins outright.
     const forced = model.forced.find((candidate) => candidate.y > top + MIN_ADVANCE);
@@ -106,7 +127,7 @@ export function paginate(model: FragmentModel, options: PaginateOptions): PageSl
       }
     }
 
-    if (breakY <= top + MIN_ADVANCE) breakY = top + pageHeight;
+    if (breakY <= top + MIN_ADVANCE) breakY = top + usable;
 
     const isLast = breakY >= contentHeight;
     slices.push({
@@ -114,6 +135,8 @@ export function paginate(model: FragmentModel, options: PaginateOptions): PageSl
       top,
       bottom: isLast ? Math.max(contentHeight, breakY) : breakY,
       overflowed,
+      reservedTop,
+      reservedBottom,
     });
 
     if (isLast) break;

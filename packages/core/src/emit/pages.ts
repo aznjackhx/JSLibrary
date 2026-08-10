@@ -7,6 +7,11 @@
 
 import { buildFragmentModel } from "../fragment/atoms.js";
 import { paginate, type PageSlice } from "../fragment/paginate.js";
+import {
+  collectRepeatingTables,
+  footerRepeatAt,
+  headerRepeatAt,
+} from "../fragment/tables.js";
 import type { MeasuredDocument } from "../measure/types.js";
 import type { PdfDocument } from "../pdf/document.js";
 import type { StrandingDefaults } from "../fragment/stranding.js";
@@ -27,14 +32,35 @@ export function paintPagedDocument(
 ): PageSlice[] {
   const pageHeight = ptToPx(geometry.content.height);
   const model = buildFragmentModel(measured.root, stranding);
-  const slices = paginate(model, { pageHeight, contentHeight: measured.contentHeight });
+  const tables = collectRepeatingTables(measured.root);
+
+  const slices = paginate(model, {
+    pageHeight,
+    contentHeight: measured.contentHeight,
+    tables,
+  });
 
   for (const slice of slices) {
     const page = pdf.addPage({
       width: geometry.size.width,
       height: geometry.size.height,
     });
-    paintPage(page, measured, context, geometry.content, slice);
+
+    // A page beginning inside a table repeats that table's header at the top
+    // and its footer at the foot.
+    const header = headerRepeatAt(tables, slice.top)
+      .map((table) => table.header?.node)
+      .filter((node): node is NonNullable<typeof node> => node !== undefined);
+    const footer = footerRepeatAt(tables, slice.top, pageHeight)
+      .map((table) => table.footer?.node)
+      .filter((node): node is NonNullable<typeof node> => node !== undefined);
+
+    paintPage(page, measured, context, geometry.content, slice, {
+      header,
+      headerHeight: slice.reservedTop,
+      footer,
+      footerHeight: slice.reservedBottom,
+    });
   }
 
   return slices;

@@ -21,16 +21,24 @@ export interface PageTransformOptions {
    * this is how much of it has already been consumed. Zero for a single page.
    */
   readonly scrollY?: number;
+  /**
+   * Height given up at the top of the page, in CSS pixels, before content
+   * begins — a repeated table header, for instance. Content is pushed down by
+   * this much.
+   */
+  readonly insetTop?: number;
 }
 
 /** Maps measured CSS pixels onto a page's content box in PDF user space. */
 export class PageTransform {
   readonly content: PageRect;
   readonly scrollY: number;
+  readonly insetTop: number;
 
   constructor(options: PageTransformOptions) {
     this.content = options.content;
     this.scrollY = options.scrollY ?? 0;
+    this.insetTop = options.insetTop ?? 0;
   }
 
   /** Horizontal position: same direction, different unit. */
@@ -45,7 +53,9 @@ export class PageTransform {
    * *highest* point on the page.
    */
   y(cssY: number): Pt {
-    return round(this.content.y + this.content.height - pxToPt(cssY - this.scrollY));
+    return round(
+      this.content.y + this.content.height - pxToPt(cssY - this.scrollY + this.insetTop),
+    );
   }
 
   /** A length, which the flip does not affect. */

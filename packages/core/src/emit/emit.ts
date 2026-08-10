@@ -22,6 +22,7 @@ import type { ContentStream } from "../pdf/content.js";
 import type { PdfDocument, PdfPage } from "../pdf/document.js";
 import { dict, name, type PdfRef } from "../pdf/objects.js";
 import type { Rect as PageRect } from "../page/geometry.js";
+import { ptToPx } from "../units.js";
 import { drawImage, embedImage, type EmbeddedImage } from "./images.js";
 import { paintBackground, paintBorders } from "./paint.js";
 import { emitLine, emitTextDecoration } from "./text.js";
@@ -309,6 +310,17 @@ export function ownsLine(line: { rect: { y: number } }, band: PageBand): boolean
   return line.rect.y >= band.top && line.rect.y < band.bottom;
 }
 
+export interface PageFurniture {
+  /** Subtrees repainted at the top of the page, in order. */
+  readonly header: readonly MeasuredElement[];
+  /** Height the header occupies, in CSS pixels. */
+  readonly headerHeight: number;
+  /** Subtrees repainted at the foot of the page, in order. */
+  readonly footer: readonly MeasuredElement[];
+  /** Height the footer occupies, in CSS pixels. */
+  readonly footerHeight: number;
+}
+
 /** Paint one page's worth of a measured document. */
 export function paintPage(
   page: PdfPage,
@@ -316,13 +328,60 @@ export function paintPage(
   context: EmissionContext,
   content: PageRect,
   band: PageBand,
+  furniture: PageFurniture = { header: [], headerHeight: 0, footer: [], footerHeight: 0 },
 ): void {
-  const transform = new PageTransform({ content, scrollY: band.top });
-
+  const pageHeightPx = ptToPx(content.height);
   // Everything is clipped to the content box: a box taller than the page must
   // stop at the margin rather than bleed across it.
   page.content.save();
   page.content.clipRect(content.x, content.y, content.width, content.height);
+
+  // Repeated furniture is painted first, pinned to the top of the page. Its
+  // own band is the span it occupies in the measured column, so it paints
+  // exactly as it did where it was measured.
+  let painted = 0;
+  for (const section of furniture.header) {
+    const sectionTransform = new PageTransform({
+      content,
+      // Placing the section's own top at the page top plus what is already
+      // painted above it.
+      scrollY: section.rect.y - painted,
+    });
+    paintNode(page.content, section, {
+      context,
+      page,
+      transform: sectionTransform,
+      band: { top: section.rect.y, bottom: section.rect.y + section.rect.height },
+    });
+    painted += section.rect.height;
+  }
+
+  const transform = new PageTransform({
+    content,
+    scrollY: band.top,
+    insetTop: furniture.headerHeight,
+  });
   paintNode(page.content, measured.root, { context, page, transform, band });
+
+  // Footers are pinned to the foot of the page, in the room pagination set
+  // aside for them. Reserving the space without painting it would leave a gap
+  // where the footer should be — which is what the first version did.
+  let footerOffset = furniture.footerHeight;
+  for (const section of furniture.footer) {
+    const sectionTransform = new PageTransform({
+      content,
+      // Place the section's own top so its bottom lands on the page's bottom
+      // edge, less whatever footer sections follow it.
+      scrollY: section.rect.y - (pageHeightPx - footerOffset),
+    });
+    paintNode(page.content, section, {
+      context,
+      page,
+      transform: sectionTransform,
+      band: { top: section.rect.y, bottom: section.rect.y + section.rect.height },
+    });
+    footerOffset -= section.rect.height;
+  }
+
   page.content.restore();
 }
