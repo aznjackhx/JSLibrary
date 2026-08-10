@@ -9,14 +9,14 @@
  * expected. The enforcement is the licence, not this.
  */
 
-import {
-  dict,
-  name,
-  textString,
-  type PdfDocument,
-  type PdfLiteralString,
-  type PdfPage,
-} from "@pkg/core/pdf";
+import { pdf } from "@pkg/core";
+import type { pdf as PdfModule } from "@pkg/core";
+
+type PdfDocument = InstanceType<typeof PdfModule.PdfDocument>;
+type PdfPage = InstanceType<typeof PdfModule.PdfPage>;
+type PdfLiteralString = InstanceType<typeof PdfModule.PdfLiteralString>;
+
+const { dict, name, textString } = pdf;
 
 /** Text drawn on each page of unlicensed output. */
 export const WATERMARK_TEXT = "Unlicensed @pkg/pro build";

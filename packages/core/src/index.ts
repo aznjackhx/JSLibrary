@@ -47,6 +47,16 @@ export type {
   Rect,
 } from "./page/geometry.js";
 export { pageGeometry } from "./page/geometry.js";
+/**
+ * The PDF object model — unstable, and not part of the supported surface.
+ *
+ * Exposed as one namespace on the main entry rather than a subpath export so
+ * there is exactly one copy of these classes at runtime. `@pkg/pro` builds
+ * conformance profiles on them; a second copy from a separately bundled
+ * subpath would break every `instanceof` the serialiser performs, which is not
+ * a hypothetical — it is what happened when this was a subpath.
+ */
+export * as pdf from "./pdf/index.js";
 export type { Length, Pt } from "./units.js";
 export { ptToPx, pxToPt, toPt } from "./units.js";
 

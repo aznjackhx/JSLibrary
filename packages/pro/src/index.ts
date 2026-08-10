@@ -12,8 +12,9 @@
 
 import type { RenderExtension, RenderExtensionContext } from "@pkg/core";
 
+import { pdfA2bExtension, type PdfAOptions } from "./pdfa/index.js";
 import { explainFailure, verifyLicense, licenseCovers } from "./license/verify.js";
-import type { LicenseStatus } from "./license/verify.js";
+import type { LicenseStatus, VerifyOptions } from "./license/verify.js";
 import type { LicensePayload } from "./license/token.js";
 import { stampWatermark } from "./watermark.js";
 
@@ -22,6 +23,8 @@ export { coversBuild, explainFailure, licenseCovers, verifyLicense } from "./lic
 export type { LicenseFailure, LicenseStatus, VerifyOptions } from "./license/verify.js";
 export type { LicensePayload } from "./license/token.js";
 export { WATERMARK_TEXT } from "./watermark.js";
+export { buildSrgbIccProfile, buildXmp, pdfA2bExtension } from "./pdfa/index.js";
+export type { PdfAOptions } from "./pdfa/index.js";
 
 export type Edition = "core" | "pro" | "enterprise";
 
@@ -39,16 +42,24 @@ export const PRO_FEATURES = [
 
 export type ProFeature = (typeof PRO_FEATURES)[number];
 
-export interface ProOptions {
+export interface ProOptions extends PdfAOptions {
   /** The licence token. Omit it and output is watermarked. */
   readonly license?: string;
   /**
+   * Overrides for verification: the signing public key, and the build date to
+   * check against.
+   *
+   * Both default to the values compiled into this bundle, which is what a
+   * customer uses. They are overridable for two reasons: this package's own
+   * tests cannot hold the real signing key, and a self-hosted deployment that
+   * issues its own keys needs to name its own authority.
+   */
+  readonly verify?: VerifyOptions;
+  /**
    * Which conformance profile to apply. `none` still exercises the licence
    * check, which is what a caller wanting only the warning would use.
-   *
-   * PDF/A-2b lands in the next step; only `none` is accepted for now.
    */
-  readonly profile?: "none";
+  readonly profile?: "pdfa-2b" | "none";
 }
 
 /** Warned-about statuses, so a page renders many documents without shouting. */
@@ -81,7 +92,7 @@ export function resetWarnings(): void {
  * an extension that could await would be able to stall a render indefinitely.
  */
 export async function pro(options: ProOptions = {}): Promise<RenderExtension> {
-  const status = await verifyLicense(options.license);
+  const status = await verifyLicense(options.license, options.verify ?? {});
   const licensed = status.valid && licenseCovers(status.license, "pdfa");
 
   if (!licensed) {
@@ -95,11 +106,26 @@ export async function pro(options: ProOptions = {}): Promise<RenderExtension> {
     );
   }
 
+  const profile = options.profile ?? "pdfa-2b";
+  const conformance = profile === "none" ? undefined : pdfA2bExtension(options);
+
   return {
     name: "@pkg/pro",
+    prepare(context: RenderExtensionContext): void {
+      conformance?.prepare?.(context);
+    },
     finish(context: RenderExtensionContext): void {
-      // Stamped last, so it marks whatever the render produced.
-      if (!licensed) stampWatermark(context.document);
+      if (licensed) {
+        conformance?.finish?.(context);
+        return;
+      }
+
+      // Unlicensed. The mark is drawn with standard Helvetica, and PDF/A
+      // requires every font to be embedded — so watermarked output cannot also
+      // be conformant. It carries the mark and drops the claim rather than
+      // asserting a conformance that would fail at an archive ingest or an
+      // audit, which is where a customer would discover it.
+      stampWatermark(context.document);
     },
   };
 }

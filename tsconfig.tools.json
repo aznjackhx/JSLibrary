@@ -6,6 +6,10 @@
     "rootDir": ".",
     "paths": {
       "@pkg/core": ["./packages/core/src/index.ts"],
+      // Built declarations, not source: a browser test only needs the module's
+      // type, and pulling pro's sources into this project would drag its whole
+      // file list along with them.
+      "@pkg/pro": ["./packages/pro/dist/index.d.ts"],
       "@pkg/core/pdf": ["./packages/core/src/pdf/index.ts"],
       // Tests reach into internals the public API deliberately does not expose.
       "@pkg/core/*": ["./packages/core/src/*"]

@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PdfDocument } from "@pkg/core/pdf";
+import { pdf } from "@pkg/core";
 
 import { pro, resetWarnings, WATERMARK_TEXT } from "../src/index.js";
 import { stampWatermark } from "../src/watermark.js";
+
+const { PdfDocument } = pdf;
+type PdfDocument = InstanceType<typeof PdfDocument>;
 
 /** A document with a couple of pages, standing in for a render. */
 function documentWithPages(count = 2): PdfDocument {

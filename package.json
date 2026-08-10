@@ -15,7 +15,8 @@
     "test:browser": "playwright test --tsconfig=tsconfig.tools.json",
     "size": "node scripts/check-size.mjs",
     "csp": "node scripts/check-csp.mjs",
-    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm size && pnpm csp"
+    "verify": "pnpm typecheck && pnpm test && pnpm build && pnpm size && pnpm csp",
+    "verapdf": "node scripts/verapdf.mjs 2b test-results/pdfa/rendered.pdf && node scripts/verapdf.mjs 2b --expect-fail test-results/pdfa/unlicensed.pdf"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",

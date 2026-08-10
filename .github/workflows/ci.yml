@@ -59,6 +59,21 @@ jobs:
       - run: pnpm build
       - run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
       - run: pnpm test:browser --project=${{ matrix.browser }}
+
+      # The brief's bar for PDF/A: if it does not pass veraPDF, the feature is
+      # not done. Run on one engine only — the conformance of the byte stream
+      # does not depend on which browser laid the content out, and veraPDF
+      # needs a JDK and a one-time Maven fetch.
+      - name: PDF/A conformance (veraPDF)
+        if: matrix.browser == 'chromium'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Validate PDF/A output
+        if: matrix.browser == 'chromium'
+        run: pnpm verapdf
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

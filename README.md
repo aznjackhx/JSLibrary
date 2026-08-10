@@ -7,8 +7,8 @@ rasterization.
 Text stays selectable and searchable, fonts are embedded and subset, inline SVG
 becomes vector paths, and files stay small. Nothing is fetched at runtime.
 
-> **Status: Milestone 7 complete — links, bookmarks and vector SVG.** `render()` works end to
-> end: measured DOM in, multi-page vector PDF out. Pages break where content
+> **Status: Milestone 8 complete — the brief's plan is done.** `render()` works
+> end to end: measured DOM in, multi-page vector PDF out. Pages break where content
 > allows, tables repeat their header and footer on every page they span, and
 > output matches the browser's own rendering within a 0.5% pixel diff. The
 > document's own `@page` rules drive page size and margins, all sixteen margin
@@ -16,9 +16,9 @@ becomes vector paths, and files stay small. Nothing is fetched at runtime.
 > and `break-before: right` generates the blank page it implies. `<a href>`
 > becomes a link annotation per line box, in-document anchors become GoTo
 > destinations, headings become a bookmark tree, and inline SVG becomes real
-> vector paths — no rasterization anywhere. License verification and the Pro
-> package are M8. See [`CLAUDE.md`](./CLAUDE.md) for the full brief and
-> milestone plan.
+> vector paths — no rasterization anywhere. `@pkg/pro` adds Ed25519 licence
+> verification and PDF/A-2b output, validated against veraPDF in CI. See
+> [`CLAUDE.md`](./CLAUDE.md) for the full brief and milestone plan.
 >
 > Note that `@page` and `string-set` are read from authored CSS rather than the
 > CSSOM: a browser discards declarations it does not implement, so a `<style>`
@@ -172,6 +172,39 @@ instead:
 | Measurement is sane | Structural invariants: baselines inside line boxes, clusters ordered, content box inside border box |
 | Output matches the browser | The rendered PDF is diffed against that same browser's screenshot |
 | PDF construction is stable | Pixel goldens, for output built without any browser layout |
+
+## Known gaps
+
+Deliberate, and each one is a decision rather than an oversight:
+
+- **A table row taller than a page overflows** instead of splitting across
+  pages. Moving a whole row is implemented; dividing one is not.
+- **Named pages** (`@page cover` with `page: cover`) are parsed and ignored.
+  Margin-box sizing is equal thirds of each edge rather than the
+  specification's content-based sizing, and counters other than `page` and
+  `pages` resolve to nothing.
+- **SVG gaps** are listed in the table above; each draws nothing rather than
+  something wrong.
+- **Licence verification needs a secure context.** `crypto.subtle` does not
+  exist on a page served over plain HTTP, so verification there reports
+  `unsupported-platform` and Pro output is watermarked. That is reported
+  rather than silently treated as a forged key.
+
+## Commercial add-ons
+
+`@pkg/pro` is licensed separately and is never published under an open
+licence. Unlicensed use warns once and watermarks each page; it never throws
+and never corrupts output.
+
+The licence check is `buildDate <= license.updatesUntil` — deliberately not
+`Date.now() <= license.updatesUntil`. A customer's build keeps working
+forever; the key only gates whether *newer releases* accept it. There is no
+phone-home, no revocation, and no network request of any kind.
+
+Generate a signing keypair with `node scripts/license-keygen.mjs`, paste the
+public half into `packages/pro/src/license/public-key.ts`, and keep the
+private half off this repository. Issue keys with
+`node scripts/sign-license.mjs`.
 
 ## License
 

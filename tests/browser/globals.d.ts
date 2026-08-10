@@ -7,6 +7,7 @@
 declare global {
   interface Window {
     PkgCore: unknown;
+    PkgPro: unknown;
   }
 }
 

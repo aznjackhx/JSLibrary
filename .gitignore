@@ -24,3 +24,4 @@ private-key.*
 # Licence signing keys. The private half must never enter this repository.
 license-private-key*.json
 *.jwk.json
+.verapdf/
