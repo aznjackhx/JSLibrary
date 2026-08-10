@@ -25,3 +25,7 @@ private-key.*
 license-private-key*.json
 *.jwk.json
 .verapdf/
+
+# Demo output. Regenerate with `node scripts/render-demo.mjs` rather than
+# committing a copy that goes stale against the renderer that made it.
+examples/*.pdf

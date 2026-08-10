@@ -65,6 +65,11 @@ export function clusterSpans(text: string): ClusterSpan[] {
   return spans;
 }
 
+/** Is this cluster made only of characters a layout collapses? */
+function isWhitespace(text: string): boolean {
+  return /^\s+$/.test(text);
+}
+
 function toRect(rect: DOMRect, origin: { x: number; y: number }): MeasuredRect {
   return {
     x: round(rect.x - origin.x),
@@ -134,12 +139,22 @@ export function measureTextNode(node: Text, options: LineMeasurementOptions): Me
     range.setEnd(node, span.end);
     const rect = range.getBoundingClientRect();
 
-    // Collapsed whitespace has no box. It still belongs to the line it follows
-    // — dropping it would join words in the extracted text — but there is no
-    // position to record for it.
-    if (rect.width === 0 && rect.height === 0) {
+    // Collapsed whitespace paints nothing. The test is zero *width*, not a
+    // zero-sized box: the newline and indentation at the start of a wrapped
+    // paragraph collapse away visually but still report a rect with the line's
+    // full height, and treating that as visible emits a glyph for a character
+    // no font has — which is where the tofu boxes in the first demo render
+    // came from.
+    //
+    // The run still belongs to the line it follows, because dropping it
+    // entirely would join two words in the extracted text. It contributes one
+    // space rather than its own characters, so nothing downstream is ever
+    // asked to render a newline or a tab.
+    if (rect.width === 0) {
       const bucket = buckets[lastLineIndex];
-      if (bucket && bucket.text.length > 0) bucket.text += span.text;
+      if (bucket && bucket.text.length > 0 && !/\s$/.test(bucket.text)) {
+        bucket.text += isWhitespace(span.text) ? " " : span.text;
+      }
       continue;
     }
 
@@ -159,10 +174,17 @@ export function measureTextNode(node: Text, options: LineMeasurementOptions): Me
     const bucket = buckets[lineIndex];
     if (!bucket) continue;
 
+    // A visible whitespace run renders as a single space, whatever it was
+    // written as. Recording the source characters instead asks the font for a
+    // glyph for U+000A, which no font has — a paragraph wrapped across source
+    // lines then prints a tofu box at each wrap. What the browser drew is a
+    // space, so that is what is recorded.
+    const rendered = isWhitespace(span.text) ? " " : span.text;
+
     lastLineIndex = lineIndex;
-    bucket.text += span.text;
+    bucket.text += rendered;
     bucket.clusters.push({
-      text: span.text,
+      text: rendered,
       x: round(rect.x - options.origin.x),
       width: round(rect.width),
     });
