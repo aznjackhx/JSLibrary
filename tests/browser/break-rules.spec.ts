@@ -17,6 +17,7 @@ import {
   breakAfterHtml,
   breakBeforeHtml,
   oversizedImageHtml,
+  strandingHtml,
 } from "../fixtures/break-rules-page.js";
 import { ALPHA_IMAGE, renderFontBytes } from "../fixtures/render-page.js";
 
@@ -24,7 +25,16 @@ const CORE_BUNDLE = resolve(import.meta.dirname, "../../packages/core/dist/index
 
 type CoreModule = typeof import("@pkg/core");
 
-async function renderHtml(page: Page, html: string): Promise<Uint8Array> {
+interface RenderOverrides {
+  readonly orphans?: number;
+  readonly widows?: number;
+}
+
+async function renderHtml(
+  page: Page,
+  html: string,
+  overrides: RenderOverrides = {},
+): Promise<Uint8Array> {
   await page.setContent(html, { waitUntil: "load" });
   await page.evaluate(() => document.fonts.ready);
   await page.evaluate(async () => {
@@ -41,17 +51,18 @@ async function renderHtml(page: Page, html: string): Promise<Uint8Array> {
   await page.addScriptTag({ content: readFileSync(CORE_BUNDLE, "utf8") });
 
   const bytes = await page.evaluate(
-    async ({ fontBytes }) => {
+    async ({ fontBytes, overrides: passed }) => {
       const core = window.PkgCore as CoreModule;
       const pdf = await core.render(document.querySelector("#subject") as Element, {
         pageSize: "Letter",
         margins: "0.5in",
         metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
         fonts: [{ family: "Test Mono", data: new Uint8Array(fontBytes) }],
+        ...passed,
       });
       return [...pdf];
     },
-    { fontBytes: [...renderFontBytes()] },
+    { fontBytes: [...renderFontBytes()], overrides },
   );
 
   return new Uint8Array(bytes);
@@ -181,5 +192,58 @@ test.describe("replaced content", () => {
 
     const pages = await textPerPage(bytes);
     expect(pageContaining(pages, "Trailing line 1.")).toBeGreaterThan(0);
+  });
+});
+
+
+test.describe("orphans and widows", () => {
+  /** How many lines of the target paragraph landed on each page. */
+  const spread = (pages: readonly string[]): number[] =>
+    pages.map((text) => (text.match(/STRANDED line \d+\./g) ?? []).length);
+
+  test("does not strand a single line at the foot of a page", async ({ page }) => {
+    // The fixture leaves room for exactly one line at the page foot, which is
+    // what a break ignoring orphans would put there.
+    const pages = await textPerPage(await renderHtml(page, strandingHtml(2, 2)));
+    const counts = spread(pages).filter((count) => count > 0);
+
+    expect(counts.length).toBeGreaterThan(0);
+    // With orphans and widows both 2, no page may carry a single line of it:
+    // one at the foot is an orphan, one at the head is a widow.
+    for (const count of counts) {
+      expect(count, `a page carries ${count} line(s) of the paragraph`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  test("moves the paragraph whole when it cannot be split acceptably", async ({ page }) => {
+    // Minimums larger than half the paragraph make every internal break
+    // illegal, so the whole thing must move.
+    const pages = await textPerPage(await renderHtml(page, strandingHtml(4, 4)));
+    const counts = spread(pages).filter((count) => count > 0);
+
+    expect(counts, "paragraph was split despite no legal break").toHaveLength(1);
+    expect(counts[0]).toBe(6);
+  });
+
+  test("honours minimums supplied through options", async ({ page }) => {
+    // The engine may not expose the CSS properties at all — Firefox does not —
+    // so the same result has to be reachable from options.
+    const viaOptions = await textPerPage(
+      await renderHtml(page, strandingHtml(1, 1), { orphans: 4, widows: 4 }),
+    );
+    const counts = viaOptions.map(
+      (text) => (text.match(/STRANDED line \d+\./g) ?? []).length,
+    ).filter((count) => count > 0);
+
+    expect(counts).toHaveLength(1);
+  });
+
+  test("allows a split when both sides meet their minimum", async ({ page }) => {
+    // With minimums of 1 the paragraph may divide wherever it likes, so the
+    // page fills rather than pushing the paragraph over.
+    const pages = await textPerPage(await renderHtml(page, strandingHtml(1, 1)));
+    const counts = spread(pages).filter((count) => count > 0);
+
+    expect(counts.length).toBeGreaterThan(1);
   });
 });

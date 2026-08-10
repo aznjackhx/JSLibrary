@@ -12,6 +12,7 @@
  */
 
 import type { MeasuredElement, MeasuredNode } from "../measure/types.js";
+import { applyStranding, collectLineBlocks, type StrandingDefaults } from "./stranding.js";
 
 export type AtomKind = "line" | "replaced" | "avoid";
 
@@ -56,7 +57,10 @@ function isReplaced(node: MeasuredElement): boolean {
  * Nesting is deliberately not preserved: an atom inside an atom adds nothing,
  * since the outer span already forbids every break the inner one would.
  */
-export function buildFragmentModel(root: MeasuredElement): FragmentModel {
+export function buildFragmentModel(
+  root: MeasuredElement,
+  defaults: StrandingDefaults = {},
+): FragmentModel {
   const atoms: BreakAtom[] = [];
   const forced: ForcedBreak[] = [];
 
@@ -109,5 +113,10 @@ export function buildFragmentModel(root: MeasuredElement): FragmentModel {
   atoms.sort((a, b) => a.top - b.top || a.bottom - b.bottom);
   forced.sort((a, b) => a.y - b.y);
 
-  return { atoms, forced };
+  // Orphan and widow minimums remove break positions inside paragraphs, which
+  // is expressed by joining the lines either side of a forbidden position into
+  // one span.
+  const blocks = collectLineBlocks(root, defaults);
+
+  return { atoms: applyStranding(atoms, blocks), forced };
 }

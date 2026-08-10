@@ -111,6 +111,25 @@ ${filler(10, "Trailing")}`,
   );
 }
 
+/**
+ * A paragraph positioned so that a naive break would strand its first line at
+ * the foot of the page, and another positioned to strand its last line at the
+ * top of the next.
+ */
+export function strandingHtml(orphans: number, widows: number): string {
+  // Leave room for exactly one line of the paragraph at the foot of the page.
+  const before = LINES_PER_PAGE - 1;
+  const paragraph = Array.from({ length: 6 }, (_, index) => `STRANDED line ${index + 1}.`).join(
+    " ",
+  );
+
+  return shell(
+    `${filler(before, "Filler")}
+    <p id="target" style="orphans: ${orphans}; widows: ${widows};">${paragraph}</p>
+${filler(6, "Trailing")}`,
+  );
+}
+
 /** An image taller than the page has nowhere to go and must overflow. */
 export function oversizedImageHtml(imageDataUrl: string): string {
   return shell(

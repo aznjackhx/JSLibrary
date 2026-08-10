@@ -61,12 +61,26 @@ export interface RenderOptions {
   readonly metadata?: DocumentMetadata;
   /** Font files the content needs. Required: nothing can be drawn without one. */
   readonly fonts?: readonly FontInput[];
+  /**
+   * Minimum lines left at the foot of a page, overriding the CSS `orphans`
+   * property for every block.
+   *
+   * Firefox implements neither `orphans` nor `widows`, so `getComputedStyle`
+   * reports nothing there and the CSS default of 2 is used. Set this where a
+   * document needs a different value and must paginate the same way on every
+   * engine.
+   */
+  readonly orphans?: number;
+  /** Minimum lines carried onto the next page. See `orphans`. */
+  readonly widows?: number;
 }
 
 export interface ResolvedOptions {
   readonly page: PageGeometry;
   readonly textMode: TextMode;
   readonly fonts: readonly FontInput[];
+  readonly orphans: number | undefined;
+  readonly widows: number | undefined;
   readonly metadata: {
     readonly title: string | undefined;
     readonly author: string | undefined;
@@ -84,6 +98,8 @@ export function resolveOptions(options: RenderOptions = {}): ResolvedOptions {
     // Precise is the default: correctness first, with `fast` as an opt-in.
     textMode: options.textMode ?? "precise",
     fonts: options.fonts ?? [],
+    orphans: options.orphans,
+    widows: options.widows,
     metadata: {
       title: metadata.title,
       author: metadata.author,

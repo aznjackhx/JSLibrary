@@ -9,6 +9,7 @@ import { buildFragmentModel } from "../fragment/atoms.js";
 import { paginate, type PageSlice } from "../fragment/paginate.js";
 import type { MeasuredDocument } from "../measure/types.js";
 import type { PdfDocument } from "../pdf/document.js";
+import type { StrandingDefaults } from "../fragment/stranding.js";
 import type { PageGeometry } from "../page/geometry.js";
 import { ptToPx } from "../units.js";
 import type { EmissionContext } from "./emit.js";
@@ -22,9 +23,10 @@ export function paintPagedDocument(
   measured: MeasuredDocument,
   context: EmissionContext,
   geometry: PageGeometry,
+  stranding: StrandingDefaults = {},
 ): PageSlice[] {
   const pageHeight = ptToPx(geometry.content.height);
-  const model = buildFragmentModel(measured.root);
+  const model = buildFragmentModel(measured.root, stranding);
   const slices = paginate(model, { pageHeight, contentHeight: measured.contentHeight });
 
   for (const slice of slices) {

@@ -48,11 +48,24 @@ const text = (tops: number[], height = 20): MeasuredNode => ({
 
 describe("buildFragmentModel", () => {
   it("makes each line an atom", () => {
-    const { atoms } = buildFragmentModel(element("div", 0, 60, [text([0, 20, 40])]));
+    // Minimums of 1 leave every break position open, so the lines stay
+    // separate; the default of 2 and 2 would merge a three-line block, which
+    // is asserted below.
+    const { atoms } = buildFragmentModel(element("div", 0, 60, [text([0, 20, 40])]), {
+      orphans: 1,
+      widows: 1,
+    });
 
     expect(atoms).toHaveLength(3);
     expect(atoms.every((atom) => atom.kind === "line")).toBe(true);
     expect(atoms[0]).toEqual({ kind: "line", top: 0, bottom: 20 });
+  });
+
+  it("merges a block the default minimums make unbreakable", () => {
+    // Three lines cannot satisfy orphans 2 and widows 2 on both sides of any
+    // split, so the paragraph must move whole.
+    const { atoms } = buildFragmentModel(element("div", 0, 60, [text([0, 20, 40])]));
+    expect(atoms).toEqual([{ kind: "line", top: 0, bottom: 60 }]);
   });
 
   it("sorts atoms by position regardless of tree order", () => {
@@ -60,7 +73,7 @@ describe("buildFragmentModel", () => {
       element("p", 60, 20, [text([60])]),
       element("p", 0, 20, [text([0])]),
     ]);
-    const { atoms } = buildFragmentModel(root);
+    const { atoms } = buildFragmentModel(root, { orphans: 1, widows: 1 });
     expect(atoms.map((atom) => atom.top)).toEqual([0, 60]);
   });
 

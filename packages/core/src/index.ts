@@ -95,7 +95,10 @@ export async function render(
     precise: resolved.textMode === "precise",
   });
 
-  paintPagedDocument(pdf, measured.document, context, resolved.page);
+  paintPagedDocument(pdf, measured.document, context, resolved.page, {
+    ...(resolved.orphans === undefined ? {} : { orphans: resolved.orphans }),
+    ...(resolved.widows === undefined ? {} : { widows: resolved.widows }),
+  });
   context.finish();
 
   return pdf.toBytes();
