@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>@pkg/core demo — HTML to vector PDF</title>
+
+<style>
+  /* --------------------------------------------------------------------
+     Print setup. None of this affects the on-screen preview: the library
+     reads these rules itself, because no browser exposes @page any other
+     way. Page size, margins, running headers, page numbers.
+     -------------------------------------------------------------------- */
+  @page {
+    size: A4;
+    margin: 20mm 18mm 18mm 18mm;
+
+    @top-left { content: string(chapter); font-size: 8pt; color: rgb(120, 120, 120); }
+    @top-right { content: "Northwind Analytics"; font-size: 8pt; color: rgb(120, 120, 120); }
+    @bottom-center { content: counter(page) " / " counter(pages); font-size: 8pt; color: rgb(120, 120, 120); }
+  }
+
+  /* The first page is a cover: no running header on it. */
+  @page :first {
+    margin-top: 30mm;
+    @top-left { content: none; }
+    @top-right { content: none; }
+  }
+
+  /* Each h2 sets the running header for the pages it spans. */
+  h2 { string-set: chapter content(); }
+
+  /* --------------------------------------------------------------------
+     Ordinary screen styles.
+     -------------------------------------------------------------------- */
+  @font-face {
+    font-family: "Demo Sans";
+    src: url("../tests/fixtures/fonts/DejaVuSansMono.ttf") format("truetype");
+    font-weight: 400;
+    font-style: normal;
+  }
+
+  body {
+    margin: 0;
+    padding: 24px;
+    background: rgb(245, 245, 247);
+    font-family: system-ui, sans-serif;
+  }
+
+  #controls {
+    max-width: 680px;
+    margin: 0 auto 24px;
+    padding: 16px 20px;
+    background: rgb(255, 255, 255);
+    border: 1px solid rgb(220, 220, 224);
+    border-radius: 8px;
+  }
+  #controls h1 { margin: 0 0 8px; font-size: 18px; }
+  #controls p { margin: 0 0 12px; font-size: 14px; color: rgb(90, 90, 96); }
+  button {
+    font: inherit;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid rgb(60, 90, 200);
+    background: rgb(60, 90, 200);
+    color: white;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status { margin-left: 12px; font-size: 14px; color: rgb(90, 90, 96); }
+
+  /* The element that actually gets rendered. Sized to the A4 content box
+     so the preview matches the output. */
+  #report {
+    width: 174mm;
+    margin: 0 auto;
+    padding: 0;
+    background: rgb(255, 255, 255);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    font-family: "Demo Sans", monospace;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: rgb(28, 28, 32);
+  }
+
+  .cover {
+    padding: 0 0 28px;
+    border-bottom: 3px solid rgb(60, 90, 200);
+    margin-bottom: 24px;
+  }
+  .cover h1 { margin: 0 0 6px; font-size: 24pt; line-height: 1.2; }
+  .cover .subtitle { color: rgb(110, 110, 118); margin: 0 0 18px; }
+
+  h2 {
+    font-size: 14pt;
+    margin: 26px 0 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgb(215, 215, 220);
+    /* A heading should never be the last thing on a page. */
+    break-after: avoid;
+  }
+  h3 { font-size: 11pt; margin: 18px 0 6px; break-after: avoid; }
+  p { margin: 0 0 9px; orphans: 3; widows: 3; }
+
+  a { color: rgb(40, 80, 190); }
+
+  /* Table with a repeating header and footer across page breaks. */
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 9pt; }
+  th, td { padding: 5px 8px; border-bottom: 1px solid rgb(226, 226, 230); text-align: left; }
+  thead th { background: rgb(238, 241, 250); border-bottom: 2px solid rgb(60, 90, 200); }
+  tfoot td { background: rgb(246, 246, 248); font-weight: bold; border-top: 2px solid rgb(60, 90, 200); }
+  td.num, th.num { text-align: right; }
+
+  /* A figure must never be split across a page break. */
+  figure { break-inside: avoid; margin: 16px 0; }
+  figcaption { font-size: 8.5pt; color: rgb(110, 110, 118); margin-top: 6px; }
+
+  .callout {
+    border: 1px solid rgb(60, 90, 200);
+    border-left-width: 4px;
+    background: rgb(247, 249, 255);
+    padding: 10px 14px;
+    margin: 14px 0;
+    break-inside: avoid;
+  }
+
+  /* Each appendix starts on a fresh page. */
+  .page-break { break-before: page; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <h1>HTML → vector PDF, in the browser</h1>
+  <p>
+    Renders the document below. Nothing is rasterized and nothing is fetched:
+    the text stays selectable, the chart stays a vector, and the whole file is
+    a few tens of kilobytes.
+  </p>
+  <button id="render" type="button">Render PDF</button>
+  <span id="status"></span>
+</div>
+
+<div id="report">
+
+  <header class="cover">
+    <h1>Quarterly Operations Review</h1>
+    <p class="subtitle">Northwind Analytics — Q3, prepared for the board</p>
+    <p style="margin:0">
+      This document was produced from live DOM by
+      <a href="https://github.com/aznjackhx/JSLibrary">@pkg/core</a>. Every
+      feature it exercises is listed in
+      <a href="#appendix">the appendix</a>.
+    </p>
+  </header>
+
+  <h2 id="summary">Executive summary</h2>
+
+  <p>
+    Revenue grew 14% quarter over quarter while support load stayed flat, which
+    is the outcome the platform investment was meant to produce. The margin
+    improvement is concentrated in the two regions that migrated first, and the
+    remaining regions are scheduled through the next two quarters.
+  </p>
+  <p>
+    The table below spans a page boundary on purpose. Its header repeats at the
+    top of every page it reaches, and its totals row sits at the foot of each —
+    the single most requested feature missing from every comparable library.
+  </p>
+
+  <div class="callout">
+    <strong>Note.</strong> This box has <code>break-inside: avoid</code>, so it
+    is moved whole to the next page rather than being cut in half.
+  </div>
+
+  <h2 id="regions">Regional performance</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Region</th>
+        <th>Segment</th>
+        <th class="num">Accounts</th>
+        <th class="num">Revenue</th>
+        <th class="num">Margin</th>
+      </tr>
+    </thead>
+    <tfoot>
+      <tr>
+        <td colspan="2">Total</td>
+        <td class="num">4,182</td>
+        <td class="num">$21,447,900</td>
+        <td class="num">38.6%</td>
+      </tr>
+    </tfoot>
+    <tbody id="rows"><!-- filled in by script --></tbody>
+  </table>
+
+  <h2 id="trend">Trend analysis</h2>
+
+  <p>
+    The chart below is inline SVG. It is emitted as PDF path operators — lines,
+    curves and fills — so it stays sharp at any zoom and costs a few hundred
+    bytes rather than the hundred kilobytes a screenshot of it would.
+  </p>
+
+  <figure>
+    <svg width="480" height="200" viewBox="0 0 480 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- axes -->
+      <line x1="40" y1="10" x2="40" y2="165" stroke="rgb(160,160,168)" stroke-width="1"/>
+      <line x1="40" y1="165" x2="460" y2="165" stroke="rgb(160,160,168)" stroke-width="1"/>
+
+      <!-- gridlines -->
+      <g stroke="rgb(228,228,232)" stroke-width="1" stroke-dasharray="3 3">
+        <line x1="40" y1="127" x2="460" y2="127"/>
+        <line x1="40" y1="89" x2="460" y2="89"/>
+        <line x1="40" y1="51" x2="460" y2="51"/>
+      </g>
+
+      <!-- bars -->
+      <g fill="rgb(60,90,200)">
+        <rect x="62" y="112" width="34" height="53" rx="2"/>
+        <rect x="132" y="96" width="34" height="69" rx="2"/>
+        <rect x="202" y="74" width="34" height="91" rx="2"/>
+        <rect x="272" y="82" width="34" height="83" rx="2"/>
+        <rect x="342" y="45" width="34" height="120" rx="2"/>
+        <rect x="412" y="31" width="34" height="134" rx="2"/>
+      </g>
+
+      <!-- trend line over the bars, with round joins -->
+      <path d="M 79 104 L 149 88 L 219 66 L 289 74 L 359 37 L 429 23"
+            fill="none" stroke="rgb(214,110,40)" stroke-width="2.5"
+            stroke-linejoin="round" stroke-linecap="round"/>
+
+      <!-- markers -->
+      <g fill="rgb(255,255,255)" stroke="rgb(214,110,40)" stroke-width="2">
+        <circle cx="79" cy="104" r="3.5"/>
+        <circle cx="149" cy="88" r="3.5"/>
+        <circle cx="219" cy="66" r="3.5"/>
+        <circle cx="289" cy="74" r="3.5"/>
+        <circle cx="359" cy="37" r="3.5"/>
+        <circle cx="429" cy="23" r="3.5"/>
+      </g>
+
+      <!-- an arc and a polygon, so the curve and polygon paths are exercised -->
+      <path d="M 300 180 A 26 26 0 0 1 352 180" fill="none"
+            stroke="rgb(70,150,110)" stroke-width="2"/>
+      <polygon points="360,186 372,164 384,186" fill="rgb(70,150,110)"/>
+    </svg>
+    <figcaption>
+      Figure 1 — Revenue by quarter (bars) against forecast (line). Drawn as
+      vector paths: bars, a polyline, circles, an elliptical arc and a polygon.
+    </figcaption>
+  </figure>
+
+  <h2 id="commentary">Commentary</h2>
+  <div id="commentary-body"><!-- filled in by script --></div>
+
+  <h2 id="appendix" class="page-break">Appendix — what this exercises</h2>
+
+  <h3>Fragmentation</h3>
+  <p>
+    Page breaks chosen by the library, never mid-line. Table headers and footers
+    repeated on every page the table spans. Figures and callouts kept whole.
+    Orphan and widow control on paragraphs. This appendix begins on a fresh page
+    because of <code>break-before: page</code>.
+  </p>
+
+  <h3>Page furniture</h3>
+  <p>
+    A4 with millimetre margins from <code>@page</code>. A running header on the
+    left that tracks the current section — that is a GCPM named string, set by
+    each heading. A page counter at the foot showing N of M. The cover page
+    suppresses its header via <code>@page :first</code>.
+  </p>
+
+  <h3>Text, links and structure</h3>
+  <p>
+    The font is embedded and subset, so text is selectable and searchable and
+    the file stays small. Links become real PDF annotations, one rectangle per
+    line a link occupies. Headings become bookmarks in the reader's sidebar.
+  </p>
+</div>
+
+<script type="module">
+  // ------------------------------------------------------------------
+  // Build the long parts of the document, so the markup above stays
+  // readable rather than being a wall of rows.
+  // ------------------------------------------------------------------
+  const REGIONS = [
+    ["North America", "Enterprise"], ["North America", "Mid-market"],
+    ["North America", "SMB"], ["EMEA", "Enterprise"], ["EMEA", "Mid-market"],
+    ["EMEA", "SMB"], ["APAC", "Enterprise"], ["APAC", "Mid-market"],
+    ["APAC", "SMB"], ["LATAM", "Enterprise"], ["LATAM", "Mid-market"],
+    ["LATAM", "SMB"], ["Nordics", "Enterprise"], ["Nordics", "Mid-market"],
+    ["Nordics", "SMB"], ["DACH", "Enterprise"], ["DACH", "Mid-market"],
+    ["DACH", "SMB"], ["Benelux", "Enterprise"], ["Benelux", "Mid-market"],
+    ["Benelux", "SMB"], ["Japan", "Enterprise"], ["Japan", "Mid-market"],
+    ["Japan", "SMB"], ["ANZ", "Enterprise"], ["ANZ", "Mid-market"],
+    ["ANZ", "SMB"], ["India", "Enterprise"], ["India", "Mid-market"],
+    ["India", "SMB"],
+  ];
+
+  const rows = document.getElementById("rows");
+  REGIONS.forEach(([region, segment], index) => {
+    const accounts = 60 + ((index * 37) % 260);
+    const revenue = 180_000 + ((index * 91_300) % 1_100_000);
+    const margin = 28 + ((index * 7) % 22);
+
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${region}</td><td>${segment}</td>` +
+      `<td class="num">${accounts.toLocaleString("en-US")}</td>` +
+      `<td class="num">$${revenue.toLocaleString("en-US")}</td>` +
+      `<td class="num">${margin}.${index % 10}%</td>`;
+    rows.append(tr);
+  });
+
+  const commentary = document.getElementById("commentary-body");
+  for (let index = 1; index <= 8; index += 1) {
+    const p = document.createElement("p");
+    p.textContent =
+      `${index}. Migration cohort ${index} completed its cutover without a ` +
+      "rollback. Support contacts per account fell against the prior quarter, " +
+      "and the reduction held through the following month rather than " +
+      "rebounding once the launch attention moved on. The remaining regions " +
+      "follow the same sequencing, with the two largest scheduled last so " +
+      "that the playbook is settled before it meets the hardest cases.";
+    commentary.append(p);
+  }
+
+  // ------------------------------------------------------------------
+  // Render.
+  // ------------------------------------------------------------------
+  const button = document.getElementById("render");
+  const status = document.getElementById("status");
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    status.textContent = "rendering…";
+
+    try {
+      // Fonts are passed as bytes: the browser will not hand back the bytes of
+      // a font it has already loaded, and the library makes no network
+      // requests of its own.
+      const fontBytes = new Uint8Array(
+        await (await fetch("../tests/fixtures/fonts/DejaVuSansMono.ttf")).arrayBuffer(),
+      );
+
+      await document.fonts.ready;
+
+      const started = performance.now();
+      const pdf = await window.PkgCore.render(document.getElementById("report"), {
+        fonts: [{ family: "Demo Sans", data: fontBytes }],
+        metadata: {
+          title: "Quarterly Operations Review",
+          author: "Northwind Analytics",
+          subject: "Q3 board pack",
+        },
+      });
+      const elapsed = Math.round(performance.now() - started);
+
+      const blob = new Blob([pdf], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "quarterly-review.pdf";
+      link.click();
+      URL.revokeObjectURL(url);
+
+      status.textContent = `${(pdf.length / 1024).toFixed(1)} KB in ${elapsed} ms`;
+    } catch (error) {
+      status.textContent = `failed: ${error.message}`;
+      throw error;
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+
+<!-- The built bundle. Run `pnpm build` first. -->
+<script src="../packages/core/dist/index.global.js"></script>
+</body>
+</html>
