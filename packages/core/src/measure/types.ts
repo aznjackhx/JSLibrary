@@ -123,8 +123,10 @@ export interface MeasuredElement {
    * embedding megabytes of image data in it would make golden diffs useless.
    */
   readonly imageRef: string | undefined;
-  /** Present for `<a href>`, for link annotations in M7. */
+  /** The `href` attribute exactly as authored; `#section` stays a fragment. */
   readonly href: string | undefined;
+  /** The same href resolved against the document's base URL. */
+  readonly hrefResolved: string | undefined;
   readonly children: readonly MeasuredNode[];
 }
 

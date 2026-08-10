@@ -73,7 +73,7 @@ export class PdfPage {
   readonly content = new ContentStream();
   /** Fonts, images and graphics states this page refers to. */
   readonly resources = new ResourceRegistry();
-  /** Link and other annotations, added in M7. */
+  /** Link and other annotations. */
   readonly annotations: PdfValue[] = [];
   /** Extra page dictionary entries (e.g. `/Group`, `/Tabs`). */
   readonly extra = new PdfDict();
@@ -81,6 +81,14 @@ export class PdfPage {
   constructor(
     readonly width: number,
     readonly height: number,
+    /**
+     * This page's own object reference, reserved when the page is created.
+     *
+     * A destination has to name the page it lands on, and destinations are
+     * built while painting — long before the page tree is assembled. Reserving
+     * the number up front is what lets a link on page one point at page nine.
+     */
+    readonly ref: PdfRef,
   ) {
     if (!(width > 0) || !(height > 0)) {
       throw new RangeError(`Page size must be positive, received ${width}x${height}`);
@@ -89,6 +97,8 @@ export class PdfPage {
 }
 
 export class PdfDocument {
+  /** Extra catalog entries, e.g. `/Outlines` and `/Dests`. */
+  readonly catalogExtra = new PdfDict();
   readonly #objects = new Map<number, PdfValue>();
   readonly #pages: PdfPage[] = [];
   #nextNumber = 1;
@@ -138,13 +148,18 @@ export class PdfDocument {
     return target;
   }
 
+  /** The value stored for a reference, if it has been assigned one. */
+  objectFor(target: PdfRef): PdfValue | undefined {
+    return this.#objects.get(target.num) ?? undefined;
+  }
+
   /** Add an indirect object and get its reference. */
   add(value: PdfValue): PdfRef {
     return this.assign(this.reserve(), value);
   }
 
   addPage(options: PageOptions): PdfPage {
-    const page = new PdfPage(options.width, options.height);
+    const page = new PdfPage(options.width, options.height, this.reserve());
     this.#pages.push(page);
     return page;
   }
@@ -199,7 +214,7 @@ export class PdfDocument {
 
       for (const [key, value] of page.extra.entries) pageDict.set(key, value);
 
-      return this.add(pageDict);
+      return this.assign(page.ref, pageDict);
     });
 
     this.assign(
@@ -211,12 +226,16 @@ export class PdfDocument {
       }),
     );
 
-    const catalogRef = this.add(
-      dict({
-        Type: name("Catalog"),
-        Pages: pagesRef,
-      }),
-    );
+    const catalog = dict({
+      Type: name("Catalog"),
+      Pages: pagesRef,
+    });
+    // Outlines, destinations and anything else a later stage attached. Set
+    // here rather than in the constructor because they are only known once the
+    // document has been painted.
+    for (const [key, value] of this.catalogExtra.entries) catalog.set(key, value);
+
+    const catalogRef = this.add(catalog);
 
     const infoRef = this.add(this.#buildInfoDict());
 

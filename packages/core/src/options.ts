@@ -73,6 +73,13 @@ export interface RenderOptions {
   readonly orphans?: number;
   /** Minimum lines carried onto the next page. See `orphans`. */
   readonly widows?: number;
+  /**
+   * Emit link annotations for `<a href>` and destinations for in-document
+   * anchors. Default true.
+   */
+  readonly links?: boolean;
+  /** Emit a PDF outline (bookmarks) built from heading hierarchy. Default true. */
+  readonly outline?: boolean;
 }
 
 export interface ResolvedOptions {
@@ -81,6 +88,8 @@ export interface ResolvedOptions {
   readonly fonts: readonly FontInput[];
   readonly orphans: number | undefined;
   readonly widows: number | undefined;
+  readonly links: boolean;
+  readonly outline: boolean;
   readonly metadata: {
     readonly title: string | undefined;
     readonly author: string | undefined;
@@ -100,6 +109,8 @@ export function resolveOptions(options: RenderOptions = {}): ResolvedOptions {
     fonts: options.fonts ?? [],
     orphans: options.orphans,
     widows: options.widows,
+    links: options.links ?? true,
+    outline: options.outline ?? true,
     metadata: {
       title: metadata.title,
       author: metadata.author,

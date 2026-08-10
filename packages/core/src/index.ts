@@ -6,6 +6,8 @@
  */
 
 import { EmissionContext } from "./emit/emit.js";
+import { destination } from "./emit/links.js";
+import { buildOutlineTree, collectHeadings, writeOutline } from "./emit/outline.js";
 import { paintPagedDocument } from "./emit/pages.js";
 import { NotImplementedError, RenderError } from "./errors.js";
 import { Font } from "./fonts/font.js";
@@ -16,6 +18,7 @@ import { parsePageRules } from "./page/atrules.js";
 import { pageContextFor, type PageContext } from "./page/context.js";
 import { collectStringSetRules } from "./page/string-set.js";
 import { PdfDocument } from "./pdf/document.js";
+import { PdfDict, textString, type PdfValue } from "./pdf/objects.js";
 import { ptToPx } from "./units.js";
 
 export { RenderError, NotImplementedError } from "./errors.js";
@@ -148,14 +151,47 @@ export async function render(
     precise: resolved.textMode === "precise",
   });
 
-  paintPagedDocument(pdf, measured.document, context, {
+  const paged = paintPagedDocument(pdf, measured.document, context, {
     contextFor,
     stranding: {
       ...(resolved.orphans === undefined ? {} : { orphans: resolved.orphans }),
       ...(resolved.widows === undefined ? {} : { widows: resolved.widows }),
     },
     strings: measured.strings,
+    links: resolved.links,
   });
+
+  // Named destinations, so an id is addressable by name — `report.pdf#sec-2`
+  // — and not only through the link that happens to point at it.
+  //
+  // Written as a name *tree* under /Names rather than the older /Dests
+  // dictionary: the tree is the form PDF 1.2 onwards prefers, and readers
+  // (pdf.js among them) look there first. Entries must be sorted by key, which
+  // is what makes a tree searchable.
+  if (paged.destinations.size > 0) {
+    const names: PdfValue[] = [];
+    for (const id of [...paged.destinations.keys()].sort()) {
+      names.push(textString(id), paged.destinations.get(id) as PdfValue);
+    }
+
+    const tree = pdf.add(new PdfDict([["Names", names]]));
+    pdf.catalogExtra.set("Names", pdf.add(new PdfDict([["Dests", tree]])));
+  }
+
+  if (resolved.outline) {
+    const headings = collectHeadings(measured.document.root);
+    const outlineRef = writeOutline(pdf, buildOutlineTree(headings), {
+      destinationFor: (heading) => {
+        const found = paged.locate(heading.y);
+        if (!found) return undefined;
+
+        const transform = paged.transformFor(found.index);
+        return destination(found.page, transform.x(heading.x), transform.y(heading.y));
+      },
+    });
+    if (outlineRef) pdf.catalogExtra.set("Outlines", outlineRef);
+  }
+
   context.finish();
 
   return pdf.toBytes();

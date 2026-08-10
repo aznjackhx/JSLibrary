@@ -166,6 +166,10 @@ export function walkElement(element: Element, options: WalkOptions): MeasuredEle
     src: image?.currentSrc || image?.src || undefined,
     imageRef,
     href: anchor?.getAttribute("href") ?? undefined,
+    // The IDL property resolves against the document's base URL, which is what
+    // a URI action needs — a relative href would be meaningless once the PDF
+    // has left the site it was rendered on.
+    hrefResolved: anchor?.href || undefined,
     children,
   };
 }
