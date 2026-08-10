@@ -1,0 +1,147 @@
+/**
+ * The corpus, held to one set of invariants.
+ *
+ * Adding a document to `tests/fixtures/corpus` adds coverage without adding
+ * assertions, which is the point: the fixtures that came before this were each
+ * written alongside the feature they exercised, and a whole class of bug walked
+ * straight through the gap between them.
+ *
+ * The invariants are deliberately about *what a reader gets*, not about what
+ * the emitter believes it wrote.
+ */
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { expect, test, type Page } from "@playwright/test";
+
+import { CORPUS, fontBytes, type CorpusDocument } from "../fixtures/corpus/index.js";
+
+const CORE_BUNDLE = resolve(import.meta.dirname, "../../packages/core/dist/index.global.js");
+
+type CoreModule = typeof import("@pkg/core");
+
+async function renderDocument(page: Page, document_: CorpusDocument): Promise<Uint8Array> {
+  await page.setContent(document_.html, { waitUntil: "load" });
+  await page.evaluate(() => document.fonts.ready);
+  await page.addScriptTag({ content: readFileSync(CORE_BUNDLE, "utf8") });
+
+  const fonts = document_.fonts.map((font) => ({
+    family: font.family,
+    data: [...fontBytes(font.file)],
+  }));
+
+  const bytes = await page.evaluate(
+    async ({ fonts }) => {
+      const core = window.PkgCore as CoreModule;
+      const pdf = await core.render(document.querySelector("#subject") as Element, {
+        metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
+        fonts: fonts.map((font) => ({
+          family: font.family,
+          data: new Uint8Array(font.data),
+        })),
+      });
+      return [...pdf];
+    },
+    { fonts },
+  );
+
+  return new Uint8Array(bytes);
+}
+
+interface Extracted {
+  readonly pages: number;
+  /** Reading text, with line breaks restored from `hasEOL`. */
+  readonly text: string;
+  /** Count of image XObjects painted across the document. */
+  readonly images: number;
+}
+
+async function extract(bytes: Uint8Array): Promise<Extracted> {
+  const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = getDocument({ data: bytes.slice(), useSystemFonts: false });
+  const document_ = await task.promise;
+
+  try {
+    let text = "";
+    let images = 0;
+
+    for (let number = 1; number <= document_.numPages; number += 1) {
+      const page = await document_.getPage(number);
+      const content = await page.getTextContent();
+
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        text += item.str + ((item as { hasEOL?: boolean }).hasEOL ? "\n" : "");
+      }
+
+      const operators = await page.getOperatorList();
+      images += operators.fnArray.filter(
+        (fn) => fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject,
+      ).length;
+    }
+
+    return { pages: document_.numPages, text, images };
+  } finally {
+    await task.destroy();
+  }
+}
+
+const normalise = (value: string): string => value.replaceAll(/\s+/g, " ").trim();
+
+/** A string's characters in a fixed order, for order-insensitive comparison. */
+const sorted = (value: string): string =>
+  [...value.replaceAll(" ", "")].sort().join("");
+
+for (const document_ of CORPUS) {
+  test.describe(document_.name, () => {
+    test(`renders — ${document_.purpose}`, async ({ page }) => {
+      const bytes = await renderDocument(page, document_);
+      const result = await extract(bytes);
+
+      expect(result.pages).toBeGreaterThan(0);
+      expect(bytes.length).toBeGreaterThan(0);
+    });
+
+    test("says what the browser shows", async ({ page }) => {
+      // The invariant that caught the tofu bug, and the reason it exists: a
+      // glyph the font cannot supply extracts as nothing, so only a comparison
+      // against the rendered text notices it is missing.
+      //
+      // A document with a known gap asserts the *failure*, so closing the gap
+      // turns CI red and the annotation has to be removed. A gap that quietly
+      // starts passing is one nobody notices has closed.
+      if (document_.knownGap) test.fail(true, document_.knownGap);
+
+      const bytes = await renderDocument(page, document_);
+      const shown = await page.evaluate(
+        () => (document.querySelector("#subject") as HTMLElement).innerText,
+      );
+
+      const extracted = normalise((await extract(bytes)).text);
+      const expected = normalise(shown);
+
+      if (document_.roundTrip === "unordered") {
+        // Same characters, any order: still catches anything dropped or
+        // unmapped, without asserting an extractor's reading order.
+        expect(sorted(extracted)).toBe(sorted(expected));
+        return;
+      }
+
+      expect(extracted).toBe(expected);
+    });
+
+    test("never rasterises text", async ({ page }) => {
+      // None of these documents contains an image, so any image XObject is
+      // text that got turned into pixels.
+      const result = await extract(await renderDocument(page, document_));
+      expect(result.images).toBe(0);
+    });
+
+    test("is deterministic", async ({ page }) => {
+      const first = await renderDocument(page, document_);
+      const second = await renderDocument(page, document_);
+      expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
+    });
+  });
+}

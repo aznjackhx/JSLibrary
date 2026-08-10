@@ -1,0 +1,327 @@
+/**
+ * The corpus: documents nobody here designed to pass.
+ *
+ * Every fixture written before this one was authored alongside the feature it
+ * exercised, which is how a `.notdef` box in every paragraph survived eight
+ * milestones and 156 browser tests. These are written the other way round —
+ * the way a customer's document actually looks — and the engine is expected to
+ * meet them, not the reverse.
+ *
+ * Each entry is rendered by `tests/browser/corpus.spec.ts` and held to the same
+ * invariants, so adding a document adds coverage without adding assertions.
+ */
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const FONT_DIR = resolve(import.meta.dirname, "../fonts");
+
+/** A font a corpus document needs, as bytes plus the family it is served as. */
+export interface CorpusFont {
+  readonly family: string;
+  readonly file: string;
+  readonly weight?: number;
+}
+
+export interface CorpusDocument {
+  /** Directory-safe identifier, used for output filenames. */
+  readonly name: string;
+  /** One line on what this document is for. */
+  readonly purpose: string;
+  readonly fonts: readonly CorpusFont[];
+  /** Markup for the whole page, including the styles it needs. */
+  readonly html: string;
+  /**
+   * How closely extracted text must match what the browser shows.
+   *
+   * `exact` is the default and the strong form. `unordered` compares the
+   * characters without their order, for scripts where a PDF's reading order
+   * and the browser's `innerText` legitimately differ — it still catches a
+   * dropped or unmapped glyph, which is what the invariant is for.
+   */
+  readonly roundTrip?: "exact" | "unordered";
+  /** Why this document needs the weaker comparison. Required when it does. */
+  readonly roundTripNote?: string;
+  /**
+   * A gap this document is known to expose, as a sentence.
+   *
+   * The round-trip test is then asserted to *fail*, so that fixing the gap
+   * turns CI red and forces this annotation to be removed. A known gap that
+   * quietly starts passing is a gap nobody notices has closed.
+   */
+  readonly knownGap?: string;
+}
+
+export function fontBytes(file: string): Uint8Array {
+  return new Uint8Array(readFileSync(resolve(FONT_DIR, file)));
+}
+
+export function fontDataUrl(file: string): string {
+  return `data:font/ttf;base64,${readFileSync(resolve(FONT_DIR, file)).toString("base64")}`;
+}
+
+/** `@font-face` rules for a document's fonts. */
+function faces(fonts: readonly CorpusFont[]): string {
+  return fonts
+    .map(
+      (font) => `
+  @font-face {
+    font-family: "${font.family}";
+    src: url("${fontDataUrl(font.file)}") format("truetype");
+    font-weight: ${font.weight ?? 400};
+    font-style: normal;
+  }`,
+    )
+    .join("\n");
+}
+
+/** Wrap a body in a page whose subject is sized to a printable column. */
+function page(options: {
+  readonly fonts: readonly CorpusFont[];
+  readonly css: string;
+  readonly body: string;
+  readonly dir?: string;
+  readonly lang?: string;
+}): string {
+  return `<!doctype html>
+<html${options.lang ? ` lang="${options.lang}"` : ""}${options.dir ? ` dir="${options.dir}"` : ""}>
+<head>
+<meta charset="utf-8">
+<style>${faces(options.fonts)}
+  @page { size: A4; margin: 18mm; }
+  html, body { margin: 0; padding: 0; background: rgb(255, 255, 255); }
+  #subject { width: 174mm; background: rgb(255, 255, 255); }
+${options.css}
+</style>
+</head>
+<body>
+  <div id="subject"${options.dir ? ` dir="${options.dir}"` : ""}>
+${options.body}
+  </div>
+</body>
+</html>`;
+}
+
+const MONO: CorpusFont = { family: "Corpus Mono", file: "DejaVuSansMono.ttf" };
+const ARABIC: CorpusFont = { family: "Corpus Arabic", file: "NotoSansArabic.ttf" };
+const HEBREW: CorpusFont = { family: "Corpus Hebrew", file: "NotoSansHebrew.ttf" };
+const JAPANESE: CorpusFont = { family: "Corpus JP", file: "NotoSansJP-subset.ttf" };
+
+/**
+ * An invoice built from utility classes.
+ *
+ * Shaped like what a CSS framework emits: flex rows, a grid, small padded
+ * badges, borders on individual sides. Not a hand-tuned document flow.
+ */
+const invoice: CorpusDocument = {
+  name: "invoice",
+  purpose: "utility-class CSS, flexbox and grid, the way a framework emits it",
+  fonts: [MONO],
+  html: page({
+    fonts: [MONO],
+    css: `
+  #subject { font-family: "Corpus Mono", monospace; font-size: 10pt; color: rgb(24,24,27); }
+  .flex { display: flex; }
+  .between { justify-content: space-between; }
+  .items-start { align-items: flex-start; }
+  .col { flex-direction: column; }
+  .gap-2 { gap: 8px; }
+  .gap-6 { gap: 24px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .p-4 { padding: 16px; }
+  .mb-6 { margin-bottom: 24px; }
+  .rounded { border-radius: 6px; }
+  .border { border: 1px solid rgb(228,228,231); }
+  .bg-muted { background: rgb(250,250,251); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px;
+           background: rgb(219,234,254); color: rgb(30,64,175); font-size: 8pt; }
+  .right { text-align: right; }
+  .muted { color: rgb(113,113,122); }
+  .h1 { font-size: 20pt; font-weight: bold; margin: 0 0 4px; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid rgb(228,228,231); font-size: 9pt; }
+  th { text-align: left; background: rgb(244,244,245); }`,
+    body: `    <div class="flex between items-start mb-6">
+      <div>
+        <p class="h1">Invoice</p>
+        <p class="muted" style="margin:0">INV-2026-0417</p>
+        <p style="margin:8px 0 0"><span class="badge">Paid</span></p>
+      </div>
+      <div class="right muted">
+        <p style="margin:0">Northwind Analytics Ltd</p>
+        <p style="margin:0">14 Rookery Lane</p>
+        <p style="margin:0">Bristol BS1 4TR</p>
+      </div>
+    </div>
+
+    <div class="grid-3 mb-6">
+      <div class="border rounded p-4 bg-muted">
+        <p class="muted" style="margin:0 0 4px">Issued</p>
+        <p style="margin:0">14 March 2026</p>
+      </div>
+      <div class="border rounded p-4 bg-muted">
+        <p class="muted" style="margin:0 0 4px">Due</p>
+        <p style="margin:0">13 April 2026</p>
+      </div>
+      <div class="border rounded p-4 bg-muted">
+        <p class="muted" style="margin:0 0 4px">Total</p>
+        <p style="margin:0">GBP 18,420.00</p>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Amount</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Platform licence, annual</td><td>1</td><td>12,000.00</td><td>12,000.00</td></tr>
+        <tr><td>Additional seats</td><td>14</td><td>240.00</td><td>3,360.00</td></tr>
+        <tr><td>Onboarding and migration</td><td>1</td><td>2,400.00</td><td>2,400.00</td></tr>
+        <tr><td>Priority support</td><td>1</td><td>660.00</td><td>660.00</td></tr>
+      </tbody>
+    </table>
+
+    <div class="flex col gap-2" style="align-items: flex-end">
+      <p style="margin:0" class="muted">Subtotal 18,420.00</p>
+      <p style="margin:0" class="muted">VAT (0%) 0.00</p>
+      <p style="margin:0"><strong>Total due GBP 18,420.00</strong></p>
+    </div>`,
+  }),
+};
+
+/** Nested tables with spans, which report generators produce constantly. */
+const tables: CorpusDocument = {
+  name: "tables",
+  purpose: "colspan, rowspan and a nested table inside a cell",
+  fonts: [MONO],
+  html: page({
+    fonts: [MONO],
+    css: `
+  #subject { font-family: "Corpus Mono", monospace; font-size: 9pt; color: rgb(24,24,27); }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  th, td { border: 1px solid rgb(200,200,206); padding: 5px 7px; vertical-align: top; }
+  th { background: rgb(240,242,248); }
+  table table { margin: 0; font-size: 8pt; }`,
+    body: `    <h2>Consolidated position</h2>
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">Entity</th>
+          <th colspan="3">Quarter</th>
+          <th rowspan="2">Total</th>
+        </tr>
+        <tr><th>Q1</th><th>Q2</th><th>Q3</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Northwind UK</td><td>1,200</td><td>1,340</td><td>1,510</td><td>4,050</td></tr>
+        <tr>
+          <td>Northwind EU</td>
+          <td colspan="3">
+            Restated — see the breakdown
+            <table>
+              <tr><th>Region</th><th>Value</th></tr>
+              <tr><td>DACH</td><td>820</td></tr>
+              <tr><td>Benelux</td><td>410</td></tr>
+              <tr><td>Nordics</td><td>385</td></tr>
+            </table>
+          </td>
+          <td>1,615</td>
+        </tr>
+        <tr><td>Northwind US</td><td>2,050</td><td>2,240</td><td>2,600</td><td>6,890</td></tr>
+      </tbody>
+    </table>`,
+  }),
+};
+
+/** Right-to-left Hebrew, which needs bidi but no contextual shaping. */
+const hebrew: CorpusDocument = {
+  name: "rtl-hebrew",
+  purpose: "right-to-left flow and bidi, without contextual shaping",
+  fonts: [HEBREW, MONO],
+  // Renders correctly — verified by eye against the browser's own painting.
+  // pdf.js reports right-to-left runs in a different order from `innerText`,
+  // so the ordered comparison fails on the extractor's behaviour rather than
+  // the renderer's. Characters are still compared, so a lost glyph is caught.
+  roundTrip: "unordered",
+  roundTripNote: "pdf.js orders right-to-left runs differently from innerText",
+  html: page({
+    fonts: [HEBREW, MONO],
+    dir: "rtl",
+    lang: "he",
+    css: `
+  #subject { font-family: "Corpus Hebrew", "Corpus Mono", sans-serif; font-size: 12pt;
+             color: rgb(24,24,27); line-height: 1.7; }
+  h2 { font-size: 15pt; margin: 0 0 8px; }
+  p { margin: 0 0 10px; }`,
+    body: `    <h2>דוח רבעוני</h2>
+    <p>ההכנסות גדלו בארבעה עשר אחוזים ברבעון הנוכחי לעומת הרבעון הקודם.</p>
+    <p>שולי הרווח השתפרו בשני האזורים הראשונים שעברו למערכת החדשה.</p>
+    <p>סך הכל נרשמו 4,182 חשבונות פעילים בסוף התקופה.</p>`,
+  }),
+};
+
+/**
+ * Right-to-left Arabic, which needs contextual shaping.
+ *
+ * Arabic letters change form by position in the word, and a browser applies
+ * the font's GSUB tables to choose them. Anything that maps characters to
+ * glyphs through `cmap` alone gets the isolated form every time, and the text
+ * renders as disconnected letters.
+ */
+const arabic: CorpusDocument = {
+  name: "rtl-arabic",
+  purpose: "contextual shaping — the case a cmap-only glyph lookup cannot serve",
+  fonts: [ARABIC, MONO],
+  knownGap:
+    "No text shaping. Glyphs are looked up through the font's cmap alone, so " +
+    "every Arabic letter gets its isolated form and the words render as " +
+    "disconnected letters at wrong positions. Fixing this needs GSUB/GPOS " +
+    "application, not a patch.",
+  html: page({
+    fonts: [ARABIC, MONO],
+    dir: "rtl",
+    lang: "ar",
+    css: `
+  #subject { font-family: "Corpus Arabic", "Corpus Mono", sans-serif; font-size: 13pt;
+             color: rgb(24,24,27); line-height: 1.8; }
+  h2 { font-size: 16pt; margin: 0 0 8px; }
+  p { margin: 0 0 10px; }`,
+    body: `    <h2>التقرير الربعي</h2>
+    <p>ارتفعت الإيرادات بنسبة أربعة عشر بالمئة مقارنة بالربع السابق.</p>
+    <p>تحسنت هوامش الربح في المنطقتين اللتين انتقلتا أولا إلى النظام الجديد.</p>`,
+  }),
+};
+
+/** Japanese, which wraps between characters rather than at spaces. */
+const japanese: CorpusDocument = {
+  name: "cjk-japanese",
+  purpose: "CJK line breaking, which happens between characters and not at spaces",
+  fonts: [JAPANESE, MONO],
+  html: page({
+    fonts: [JAPANESE, MONO],
+    lang: "ja",
+    css: `
+  #subject { font-family: "Corpus JP", "Corpus Mono", sans-serif; font-size: 12pt;
+             color: rgb(24,24,27); line-height: 1.9; }
+  h2 { font-size: 15pt; margin: 0 0 8px; }
+  p { margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  td, th { border: 1px solid rgb(200,200,206); padding: 5px 8px; }`,
+    body: `    <h2>四半期業績報告書</h2>
+    <p>東京支店の売上高は前年同期比で増加した。営業利益も同様に改善している。</p>
+    <p>顧客数の合計は本書の表に示す。注記は日本語版のみとする。</p>
+    <table>
+      <tr><th>支店</th><th>売上高</th><th>顧客数</th></tr>
+      <tr><td>東京</td><td>1,510</td><td>282</td></tr>
+      <tr><td>大阪</td><td>1,240</td><td>197</td></tr>
+    </table>`,
+  }),
+};
+
+export const CORPUS: readonly CorpusDocument[] = [
+  invoice,
+  tables,
+  hebrew,
+  arabic,
+  japanese,
+];

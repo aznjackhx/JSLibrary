@@ -24,23 +24,64 @@ Sizes are rough: **S** ≈ a day, **M** ≈ a few days, **L** ≈ a week or more
 
 ---
 
+## What the corpus found on its first run
+
+Item 1 is now partly done — five documents, held to shared invariants — and it
+paid for itself immediately.
+
+- **Arabic renders as disconnected letters.** There is no text shaping: glyphs
+  are looked up through the font's `cmap` alone, so every letter gets its
+  isolated form and the words come out unjoined and badly positioned. This is
+  new item **0** below, and it is larger than anything else on this list.
+- **Hebrew renders correctly.** Right-to-left flow, spacing and an embedded
+  Latin number all check out by eye against the browser. Its text round-trip
+  needed the unordered comparison, because pdf.js reports right-to-left runs
+  in a different order from `innerText` — an extractor difference, not a
+  renderer one.
+- **Japanese renders correctly**, including line breaking between characters
+  and inside table cells.
+- **A framework-shaped invoice and nested tables with `colspan`/`rowspan`
+  render correctly.** Flexbox, grid, badges and per-side borders all held.
+
+The Arabic document is committed with its gap asserted as an *expected
+failure*, so the day shaping lands, CI turns red and the annotation has to go.
+
 ## P0 — cannot sell without these
 
-### 1. Build the fixture corpus the brief already asked for — L
+### 0. Text shaping — XL
 
-The brief names these and none exist: invoice, multi-page financial table,
-dashboard with charts, RTL Arabic/Hebrew, CJK, long-form report with running
-headers. Add to that list, because they are what customers actually have:
+Found by the corpus, and not previously on this list. Characters are mapped to
+glyphs through `cmap`, which is correct only for scripts where one character is
+one glyph in one form. Arabic needs contextual forms and ligatures; Indic
+scripts need reordering and conjuncts. Both come from the font's `GSUB`/`GPOS`
+tables, which nothing here reads.
 
-- A real invoice rendered from a CSS framework's output (Tailwind, Bootstrap)
-- A page built with flexbox and grid, not just block flow
-- A document using a real web font, not a monospace test face
-- Something with nested tables, `colspan`/`rowspan`, and a sticky header
-- A page with images at several DPIs, including a transparent PNG
+**Why it blocks a sale:** any customer with Arabic, Persian, Urdu, Hindi,
+Bengali or Thai content gets unreadable output. Not degraded — wrong.
 
-**Why it blocks a sale:** it is the only thing that tells us what else is
-broken. Expect it to find several bugs; budget for fixing them, not just for
-writing the fixtures.
+**The decision this forces:** implement shaping (a HarfBuzz-class problem, and
+a WASM build of HarfBuzz is far outside the 60 KB budget), or read the shaped
+result back out of the browser, which already did the work. The second is much
+more in keeping with the architecture — the browser is the layout engine —
+but needs a way to recover glyph ids and positions from a laid-out run, which
+the DOM does not expose directly. Investigate that first; it may be cheap or
+it may be impossible.
+
+**Interim, and worth doing regardless:** detect scripts that need shaping and
+refuse with a clear error, rather than silently emitting nonsense.
+
+**Done when:** the Arabic corpus document renders as joined words and its
+expected-failure annotation is removed.
+
+### 1. Finish the fixture corpus — M
+
+Five documents exist: invoice, nested tables, Hebrew, Arabic, Japanese. Still
+missing:
+
+- A document using a real proportional web font, not a monospace test face
+- Images at several DPIs, including one with transparency
+- A dashboard: several charts, legends and axis labels on one page
+- A long-form report that exercises running headers over 30+ pages
 
 **Done when:** each renders correctly, each is in CI, and every bug it found
 has a regression test that fails without its fix.
