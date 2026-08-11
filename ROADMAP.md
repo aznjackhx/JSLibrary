@@ -57,27 +57,50 @@ failure*, so the day shaping lands, CI turns red and the annotation has to go.
 
 ## P0 — cannot sell without these
 
-### 0. Text shaping — XL
+### 0. Text shaping — L, and now scoped
 
-Found by the corpus, and not previously on this list. Characters are mapped to
-glyphs through `cmap`, which is correct only for scripts where one character is
-one glyph in one form. Arabic needs contextual forms and ligatures; Indic
-scripts need reordering and conjuncts. Both come from the font's `GSUB`/`GPOS`
-tables, which nothing here reads.
+Found by the corpus. Characters are mapped to glyphs through `cmap`, which is
+correct only where one character is one glyph in one form. Arabic needs
+contextual forms and ligatures; Indic scripts need reordering and conjuncts.
+Both come from the font's `GSUB` table, which nothing here reads.
 
 **Why it blocks a sale:** any customer with Arabic, Persian, Urdu, Hindi,
 Bengali or Thai content gets unreadable output. Not degraded — wrong.
 
-**The decision this forces:** implement shaping (a HarfBuzz-class problem, and
-a WASM build of HarfBuzz is far outside the 60 KB budget), or read the shaped
-result back out of the browser, which already did the work. The second is much
-more in keeping with the architecture — the browser is the layout engine —
-but needs a way to recover glyph ids and positions from a laid-out run, which
-the DOM does not expose directly. Investigate that first; it may be cheap or
-it may be impossible.
+**Investigated, and the answer changed the plan.** Two findings, both from
+evidence rather than argument. `scripts/inspect-gsub.mjs` reproduces the
+second against any font.
+
+*The escape hatch does not exist.* "Read the shaped result back out of the
+browser" was the preferred option because the browser has already done the
+work. It cannot be done: no web API exposes glyph identity. `Range` rects give
+positions, `measureText` gives advances, `document.fonts` gives no glyph
+access at all. Nothing returns which glyph a character became.
+
+*But only half the problem needs solving.* Shaping is `GSUB` (which glyph) plus
+`GPOS` (where it goes). Positions here already come from the browser, measured
+per cluster and pinned in the output — so `GPOS` is not needed at all. That is
+the expensive half, and it is already handled.
+
+**What `GSUB` actually demands**, from Noto Sans Arabic:
+
+- `init`, `medi` and `fina` are present — the joining forms — using single and
+  multiple substitution, lookup types 1 and 2. There is no `isol` feature: the
+  isolated form is what `cmap` already returns, which is exactly what the
+  corpus document renders today.
+- `rlig` carries 23 lookups and includes chained-context substitution, lookup
+  type 6. This is the hard part, and it cannot be skipped: lam-alef is a
+  required ligature and appears in ordinary words.
+
+So a shaper for Arabic needs Unicode joining classes plus `GSUB` lookup types
+1, 2, 4 and 6 — bounded, unlike a general HarfBuzz port, and with no
+positioning work. **L, not XL.** Indic reordering is a separate and larger
+problem, and should be quoted separately rather than folded into this.
 
 **Interim, and worth doing regardless:** detect scripts that need shaping and
-refuse with a clear error, rather than silently emitting nonsense.
+say so, rather than silently emitting nonsense. This is a product decision —
+refusing outright versus rendering wrongly with a warning — so it is not made
+here.
 
 **Done when:** the Arabic corpus document renders as joined words and its
 expected-failure annotation is removed.
