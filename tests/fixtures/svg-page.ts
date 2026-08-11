@@ -157,3 +157,73 @@ export function svgTextHtml(): string {
 </body>
 </html>`;
 }
+
+/**
+ * Gradients and `use`.
+ *
+ * A linear gradient in the default bounding-box units, a radial one with an
+ * off-centre focus, a gradient in user space with a transform, and an icon
+ * defined once and instanced three times — which is how every sprite sheet
+ * works and used to draw nothing at all.
+ */
+export function svgPaintServerHtml(): string {
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: rgb(255, 255, 255); }
+  #subject {
+    width: ${SVG_PAGE_WIDTH}px;
+    height: ${SVG_PAGE_HEIGHT}px;
+    background: rgb(255, 255, 255);
+  }
+  svg { display: block; }
+</style>
+</head>
+<body>
+  <div id="subject">
+    <svg id="art" width="${SVG_PAGE_WIDTH}" height="${SVG_PAGE_HEIGHT}" viewBox="0 0 200 160">
+      <defs>
+        <linearGradient id="sky">
+          <stop offset="0" stop-color="rgb(30, 64, 175)"/>
+          <stop offset="0.55" stop-color="rgb(96, 165, 250)"/>
+          <stop offset="1" stop-color="rgb(224, 242, 254)"/>
+        </linearGradient>
+
+        <linearGradient id="down" href="#sky" x1="0" y1="0" x2="0" y2="1"/>
+
+        <radialGradient id="bulb" cx="0.5" cy="0.5" r="0.5" fx="0.3" fy="0.3">
+          <stop offset="0" stop-color="rgb(254, 240, 138)"/>
+          <stop offset="1" stop-color="rgb(180, 83, 9)"/>
+        </radialGradient>
+
+        <linearGradient id="angled" gradientUnits="userSpaceOnUse"
+                        x1="10" y1="110" x2="90" y2="150">
+          <stop offset="0" stop-color="rgb(220, 38, 38)"/>
+          <stop offset="1" stop-color="rgb(250, 204, 21)"/>
+        </linearGradient>
+
+        <g id="pin">
+          <circle cx="0" cy="0" r="7" fill="rgb(22, 101, 52)"/>
+          <rect x="-1.5" y="0" width="3" height="14" fill="rgb(22, 101, 52)"/>
+        </g>
+      </defs>
+
+      <rect x="10" y="10" width="80" height="40" fill="url(#sky)"/>
+      <rect x="110" y="10" width="80" height="40" fill="url(#down)"/>
+
+      <circle cx="50" cy="85" r="25" fill="url(#bulb)"/>
+      <rect x="110" y="60" width="80" height="50" fill="url(#angled)"
+            stroke="rgb(24, 24, 27)" stroke-width="1"/>
+
+      <rect x="10" y="112" width="80" height="38" fill="url(#angled)"/>
+
+      <use href="#pin" x="120" y="126"/>
+      <use href="#pin" x="150" y="126"/>
+      <use href="#pin" x="180" y="126" transform="scale(1)"/>
+    </svg>
+  </div>
+</body>
+</html>`;
+}

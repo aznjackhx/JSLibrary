@@ -141,13 +141,20 @@ written, and passing, because the shapes it checks sit well inside both.
 
 Still missing inside `<text>`: `textPath`, and per-character `rotate`.
 
-### 5. Gradients and `use` in SVG — M
+### 5. Gradients and `use` in SVG — done
 
-Gradient fills are ubiquitous in charts. `use` is how icon sprites work. Both
-currently draw nothing — safe, but visibly wrong on real artwork.
+Linear and radial gradients paint as PDF shadings — vector, not rasterised —
+in both `objectBoundingBox` and `userSpaceOnUse` units, with
+`gradientTransform`, percentage coordinates, an off-centre radial focus, and
+`href` inheritance from another gradient. One shading is embedded per distinct
+gradient rather than per filled shape. `use` resolves and instances its
+referent, including a `symbol` or `g` in `defs`, with cycle protection.
 
-**Done when:** linear and radial gradients paint as PDF shadings, and `use`
-resolves and instances its referent.
+Two gaps left deliberately, both documented where they live: `spreadMethod`
+values other than `pad` degrade to `pad`, and stop opacity paints at full
+strength because honouring it needs a luminosity soft mask. A paint server
+that is not a gradient — a `pattern` — still paints nothing rather than a
+wrong flat colour.
 
 ### 6. Split a table row taller than a page — M
 

@@ -23,6 +23,8 @@ import type { PdfDocument, PdfPage } from "../pdf/document.js";
 import { dict, name, type PdfRef } from "../pdf/objects.js";
 import type { Rect as PageRect } from "../page/geometry.js";
 import { ptToPx } from "../units.js";
+import type { CapturedGradient } from "../measure/svg.js";
+import { embedGradient } from "./gradients.js";
 import { drawImage, embedImage, type EmbeddedImage } from "./images.js";
 import { paintBackground, paintBorders } from "./paint.js";
 import { paintSvg } from "./svg.js";
@@ -50,6 +52,7 @@ export class EmissionContext {
 
   readonly #subsets = new Map<Font, FontSubset>();
   readonly #embeddedImages = new Map<string, EmbeddedImage>();
+  readonly #shadings = new Map<string, PdfRef>();
   /** Font object per face, filled in by finish(). */
   readonly #fontRefs = new Map<Font, PdfRef>();
   /** Reserved resource names per page, bound once the objects exist. */
@@ -96,6 +99,23 @@ export class EmissionContext {
       weight: style.fontWeight,
       style: normaliseFontStyle(style.fontStyle),
     });
+  }
+
+  /**
+   * The shading object for a gradient, created once per distinct gradient.
+   *
+   * Keyed by the gradient's own geometry and stops rather than by identity,
+   * because capture produces a fresh descriptor per shape: a chart whose bars
+   * share one gradient would otherwise embed one shading per bar.
+   */
+  shadingFor(gradient: CapturedGradient): PdfRef {
+    const key = JSON.stringify(gradient);
+    const existing = this.#shadings.get(key);
+    if (existing) return existing;
+
+    const shading = embedGradient(this.document, gradient);
+    this.#shadings.set(key, shading);
+    return shading;
   }
 
   imageFor(reference: string): EmbeddedImage | undefined {
@@ -307,6 +327,12 @@ function paintVector(
         subset: options.context.subsetFor(font),
         resourceName: options.context.resourceNameFor(options.page, font),
       };
+    },
+    // A gradient becomes a shading object, deduplicated per document so a
+    // palette reused across fifty shapes is one object, not fifty.
+    shadingFor: (gradient) => {
+      const shading = options.context.shadingFor(gradient);
+      return options.page.resources.register("Shading", shading);
     },
     extGStateFor: (opacity) => {
       const state = options.context.document.add(

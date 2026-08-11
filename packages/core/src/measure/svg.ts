@@ -16,6 +16,7 @@ import {
   multiply,
   parseTransform,
   parseViewBox,
+  translation,
   viewBoxTransform,
   type Matrix,
   type ViewBox,
@@ -31,12 +32,52 @@ import {
 import { parseColor } from "./styles.js";
 import type { MeasuredColor } from "./types.js";
 
+/** One colour stop of a gradient. */
+export interface CapturedStop {
+  /** Position along the gradient, 0 to 1. */
+  readonly offset: number;
+  readonly color: MeasuredColor;
+}
+
+/**
+ * A gradient fill, as the geometry a PDF shading needs.
+ *
+ * Stop opacity is carried on the colour but cannot be honoured without a soft
+ * mask, so a partly transparent stop paints at full strength. That is visible
+ * and wrong in a way a reader can see, rather than silent, and it is far
+ * better than the previous behaviour of painting nothing at all.
+ */
+export interface CapturedGradient {
+  readonly kind: "linear" | "radial";
+  /** Endpoints for a linear gradient, in the gradient's own coordinates. */
+  readonly x1: number;
+  readonly y1: number;
+  readonly x2: number;
+  readonly y2: number;
+  /** Centre, focus and radius for a radial gradient. */
+  readonly cx: number;
+  readonly cy: number;
+  readonly r: number;
+  readonly fx: number;
+  readonly fy: number;
+  readonly stops: readonly CapturedStop[];
+  /**
+   * True when the coordinates above are fractions of the filled shape's
+   * bounding box, which is SVG's default and is resolved at paint time
+   * because only then is the box known.
+   */
+  readonly onBoundingBox: boolean;
+  readonly transform: Matrix;
+}
+
 /** One drawable path, with the paint it carries. */
 export interface CapturedPath {
   readonly segments: readonly PathSegment[];
   /** Transform from this path's coordinates to the SVG's own user space. */
   readonly transform: Matrix;
   readonly fill: MeasuredColor | undefined;
+  /** Set when the fill is a gradient, in which case `fill` is undefined. */
+  readonly fillGradient?: CapturedGradient | undefined;
   readonly stroke: MeasuredColor | undefined;
   readonly strokeWidth: number;
   readonly fillRule: "nonzero" | "evenodd";
@@ -118,14 +159,109 @@ function optionalNumber(element: Element, attribute: string): number | undefined
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** The fragment id of a `url(#id)` paint, if that is what this value is. */
+function paintReference(value: string): string | undefined {
+  const match = /^url\(\s*["\']?#([^"\')\s]+)["\']?\s*\)/.exec(value.trim());
+  return match?.[1];
+}
+
+/**
+ * Read a gradient element into the geometry a shading needs.
+ *
+ * Follows `href` to an inherited gradient, which is how a document defines one
+ * gradient's stops and then varies only its coordinates — the common pattern
+ * in chart libraries and icon sets.
+ */
+function gradientFrom(
+  element: Element,
+  view: Window & typeof globalThis,
+  depth = 0,
+): CapturedGradient | undefined {
+  const tag = element.tagName.toLowerCase();
+  if (tag !== "lineargradient" && tag !== "radialgradient") return undefined;
+
+  // Attributes and stops can both come from a referenced gradient.
+  const inheritedFrom =
+    depth < 8
+      ? (() => {
+          const href =
+            element.getAttribute("href") ??
+            element.getAttributeNS("http://www.w3.org/1999/xlink", "href") ??
+            "";
+          if (!href.startsWith("#") || href.length < 2) return undefined;
+          const target = element.ownerDocument.getElementById(href.slice(1));
+          return target ? gradientFrom(target, view, depth + 1) : undefined;
+        })()
+      : undefined;
+
+  const stops: CapturedStop[] = [];
+  for (const stop of element.children) {
+    if (stop.tagName.toLowerCase() !== "stop") continue;
+
+    const computed = view.getComputedStyle(stop);
+    const colour = parseColor(computed.stopColor || "rgb(0,0,0)");
+    const stopOpacity = numberFrom(computed.stopOpacity, 1);
+
+    const raw = stop.getAttribute("offset")?.trim() ?? "0";
+    const offset = raw.endsWith("%")
+      ? Number.parseFloat(raw) / 100
+      : Number.parseFloat(raw);
+
+    stops.push({
+      offset: Math.max(0, Math.min(1, Number.isFinite(offset) ? offset : 0)),
+      color: { ...colour, a: colour.a * stopOpacity },
+    });
+  }
+
+  const own = element.getAttribute("gradientTransform");
+  const has = (name: string): boolean => element.hasAttribute(name);
+  const number_ = (name: string, fallback: number): number =>
+    has(name) ? percentOrNumber(element.getAttribute(name) as string, fallback) : fallback;
+
+  const resolved: CapturedGradient = {
+    kind: tag === "radialgradient" ? "radial" : "linear",
+    x1: number_("x1", inheritedFrom?.x1 ?? 0),
+    y1: number_("y1", inheritedFrom?.y1 ?? 0),
+    x2: number_("x2", inheritedFrom?.x2 ?? 1),
+    y2: number_("y2", inheritedFrom?.y2 ?? 0),
+    cx: number_("cx", inheritedFrom?.cx ?? 0.5),
+    cy: number_("cy", inheritedFrom?.cy ?? 0.5),
+    r: number_("r", inheritedFrom?.r ?? 0.5),
+    fx: number_("fx", inheritedFrom?.fx ?? number_("cx", inheritedFrom?.cx ?? 0.5)),
+    fy: number_("fy", inheritedFrom?.fy ?? number_("cy", inheritedFrom?.cy ?? 0.5)),
+    stops: stops.length > 0 ? stops : (inheritedFrom?.stops ?? []),
+    onBoundingBox: has("gradientUnits")
+      ? element.getAttribute("gradientUnits") !== "userSpaceOnUse"
+      : (inheritedFrom?.onBoundingBox ?? true),
+    transform: own ? parseTransform(own) : (inheritedFrom?.transform ?? IDENTITY),
+  };
+
+  // A gradient with nothing to interpolate paints nothing; one stop is a flat
+  // colour, which PDF needs at least two of to describe.
+  if (resolved.stops.length === 0) return undefined;
+  if (resolved.stops.length === 1) {
+    const only = resolved.stops[0] as CapturedStop;
+    return { ...resolved, stops: [{ ...only, offset: 0 }, { ...only, offset: 1 }] };
+  }
+
+  return resolved;
+}
+
+/** A gradient coordinate, which may be written as a percentage. */
+function percentOrNumber(value: string, fallback: number): number {
+  const trimmed = value.trim();
+  const parsed = Number.parseFloat(trimmed);
+  if (!Number.isFinite(parsed)) return fallback;
+  return trimmed.endsWith("%") ? parsed / 100 : parsed;
+}
+
 /**
  * A paint value from computed style.
  *
  * `none` is distinct from transparent black: it means do not paint at all,
- * which is why this returns undefined rather than a zero-alpha colour. Server
- * paints — gradients and patterns, written `url(#id)` — are not supported and
- * are treated the same way, so a gradient-filled shape is left unpainted
- * rather than filled with a wrong flat colour.
+ * which is why this returns undefined rather than a zero-alpha colour. A
+ * server paint — `url(#id)` — is resolved separately, since it produces a
+ * shading rather than a colour.
  */
 function paintOf(value: string): MeasuredColor | undefined {
   const trimmed = value.trim();
@@ -310,6 +446,31 @@ function captureText(
 }
 
 /**
+ * What a `use` points at, if it is a local reference this SVG contains.
+ *
+ * Only same-document fragments are followed. An external file would be a
+ * network fetch, which this library never makes.
+ */
+function referencedElement(node: Element, root: SVGSVGElement): Element | undefined {
+  const href =
+    node.getAttribute("href") ??
+    node.getAttributeNS("http://www.w3.org/1999/xlink", "href") ??
+    "";
+
+  if (!href.startsWith("#") || href.length < 2) return undefined;
+
+  const id = href.slice(1);
+  // Scoped to the SVG first so an id repeated elsewhere on the page cannot be
+  // pulled in, then the document, since a `use` may legitimately point at
+  // another SVG's defs.
+  return (
+    root.querySelector(`[id="${CSS.escape(id)}"]`) ??
+    root.ownerDocument.getElementById(id) ??
+    undefined
+  );
+}
+
+/**
  * Flatten an inline SVG into paths.
  *
  * Returns undefined when there is nothing to draw, so a caller can fall back
@@ -323,6 +484,13 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
   const paths: CapturedPath[] = [];
   const texts: CapturedSvgText[] = [];
 
+  /**
+   * Elements currently being instanced through `use`, to stop a reference
+   * cycle from recursing forever. SVG forbids one; a hand-written or
+   * generated document can still contain one.
+   */
+  const instancing = new Set<Element>();
+
   const visit = (node: Element, inherited: Matrix): void => {
     const computed = view.getComputedStyle(node);
     if (computed.display === "none" || computed.visibility === "hidden") return;
@@ -333,10 +501,37 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
     const tag = node.tagName.toLowerCase();
 
     // `defs`, `symbol`, `mask` and friends describe things to be referenced,
-    // not things to draw. `use` would need reference resolution and cloned
-    // subtrees, which this does not do; a `use` therefore draws nothing rather
-    // than drawing the wrong thing.
+    // not things to draw. They are reached through the reference instead.
     if (tag === "defs" || tag === "symbol" || tag === "mask" || tag === "clippath") return;
+
+    // `use` instances what it points at. This is how every icon sprite works,
+    // so a document full of `use` used to come out blank.
+    if (tag === "use") {
+      const target = referencedElement(node, element);
+      if (!target || instancing.has(target)) return;
+
+      // The `x`/`y` are a translation inside the `use`'s own transform, not
+      // outside it: a scaled `use` scales the offset too.
+      const placed = multiply(
+        translation(attributeNumber(node, "x"), attributeNumber(node, "y")),
+        transform,
+      );
+
+      instancing.add(target);
+      try {
+        // A referenced `symbol` or `svg` is a container: its children draw,
+        // it does not draw itself.
+        const targetTag = target.tagName.toLowerCase();
+        if (targetTag === "symbol" || targetTag === "svg") {
+          for (const child of target.children) visit(child, placed);
+        } else {
+          visit(target, placed);
+        }
+      } finally {
+        instancing.delete(target);
+      }
+      return;
+    }
 
     // Text is read as text, and never descended into as though its `tspan`s
     // were shapes.
@@ -351,10 +546,20 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
         const strokeWidth = numberFrom(computed.strokeWidth, 1);
         const stroke = paintOf(computed.stroke);
 
+        // A `url(#id)` fill is a gradient or a pattern. Gradients become PDF
+        // shadings; anything else still paints nothing, which is the honest
+        // outcome for a paint server this cannot reproduce.
+        const fillReference = paintReference(computed.fill);
+        const referenced = fillReference
+          ? element.ownerDocument.getElementById(fillReference)
+          : undefined;
+        const gradient = referenced ? gradientFrom(referenced, view) : undefined;
+
         paths.push({
           segments,
           transform,
           fill: paintOf(computed.fill),
+          fillGradient: gradient,
           // A zero-width stroke paints nothing, so it is dropped here rather
           // than emitting an operator that draws a hairline.
           stroke: strokeWidth > 0 ? stroke : undefined,

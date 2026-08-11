@@ -15,6 +15,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   singleShapeHtml,
   svgHtml,
+  svgPaintServerHtml,
   svgTextHtml,
   SVG_PAGE_HEIGHT,
   SVG_PAGE_WIDTH,
@@ -191,13 +192,28 @@ test.describe("individual shapes", () => {
     expect(ratio).toBeGreaterThan(0.2);
   });
 
-  test("leaves a gradient-filled shape unpainted rather than guessing", async ({ page }) => {
-    // Gradients are not supported. Filling with a wrong flat colour would look
-    // like a rendering bug; drawing nothing is at least honest.
+  test("paints a gradient-filled shape", async ({ page }) => {
+    // A single-stop gradient is a flat colour, and PDF needs two stops to
+    // describe one — so this is also the degenerate case the ramp builder has
+    // to widen rather than reject.
     const ratio = await inkRatio(
       page,
       `<defs><linearGradient id="g"><stop offset="0" stop-color="black"/></linearGradient></defs>
        <rect x="0" y="0" width="50" height="50" fill="url(#g)"/>`,
+    );
+    expect(ratio).toBeGreaterThan(0.05);
+  });
+
+  test("leaves a paint server it cannot reproduce unpainted", async ({ page }) => {
+    // A pattern is not a gradient and has no shading equivalent here. Filling
+    // with a wrong flat colour would look like a rendering bug; drawing
+    // nothing is at least honest.
+    const ratio = await inkRatio(
+      page,
+      `<defs><pattern id="p" width="4" height="4" patternUnits="userSpaceOnUse">
+         <rect width="2" height="2" fill="black"/>
+       </pattern></defs>
+       <rect x="0" y="0" width="50" height="50" fill="url(#p)"/>`,
     );
     expect(ratio).toBe(0);
   });
@@ -281,6 +297,63 @@ test.describe("text", () => {
   test("is deterministic", async ({ page }) => {
     const first = await renderHtml(page, svgTextHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
     const second = await renderHtml(page, svgTextHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+    expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
+  });
+});
+
+test.describe("paint servers", () => {
+  test("draws gradients and instanced shapes as the browser does", async ({ page }, testInfo) => {
+    await page.setContent(svgPaintServerHtml(), { waitUntil: "load" });
+    const browserPng = await page.locator("#subject").screenshot({ scale: "css" });
+
+    const pdf = await renderHtml(page, svgPaintServerHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+    const pdfPng = await renderPdfPageToPng(page, pdf, { scale: PX_PER_PT });
+
+    const diff = comparePngRegion(pdfPng, browserPng, {
+      offsetX: 0,
+      offsetY: 0,
+      threshold: RASTERISER_TOLERANCE,
+      name: `m7/svg-paint-servers.${testInfo.project.name}`,
+    });
+
+    expect(
+      diff.diffRatio,
+      `${diff.diffPixels}/${diff.totalPixels} pixels differ (${(diff.diffRatio * 100).toFixed(3)}%)`,
+    ).toBeLessThanOrEqual(0.02);
+  });
+
+  test("keeps gradients as shadings rather than pixels", async ({ page }) => {
+    // The obvious way to make a gradient work is to rasterise it, which would
+    // undo the whole point of vector SVG output. Read from the operator list
+    // rather than the bytes: shading dictionaries live in compressed object
+    // streams, so searching the raw file finds nothing either way — an
+    // assertion that would have passed just as happily with no gradients at
+    // all.
+    const pdf = await renderHtml(page, svgPaintServerHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+
+    const { getDocument, OPS } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = getDocument({ data: pdf.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+
+    try {
+      const operators = await (await document_.getPage(1)).getOperatorList();
+      const shadings = operators.fnArray.filter((fn) => fn === OPS.shadingFill).length;
+      const images = operators.fnArray.filter(
+        (fn) => fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject,
+      ).length;
+
+      // Five gradient-filled shapes in the fixture, each flooded through its
+      // own clip.
+      expect(shadings).toBe(5);
+      expect(images).toBe(0);
+    } finally {
+      await task.destroy();
+    }
+  });
+
+  test("is deterministic", async ({ page }) => {
+    const first = await renderHtml(page, svgPaintServerHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+    const second = await renderHtml(page, svgPaintServerHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
     expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
   });
 });

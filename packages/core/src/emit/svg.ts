@@ -13,6 +13,7 @@
 
 import type { FontSubset } from "../fonts/font.js";
 import type {
+  CapturedGradient,
   CapturedPath,
   CapturedSvg,
   CapturedSvgGlyph,
@@ -23,6 +24,7 @@ import type { MeasuredColor, MeasuredRect } from "../measure/types.js";
 import type { ContentStream } from "../pdf/content.js";
 import { multiply, type Matrix } from "../svg/matrix.js";
 import { pxToPt } from "../units.js";
+import { gradientMatrix } from "./gradients.js";
 import { buildPositionedRun } from "./text.js";
 import type { PageTransform } from "./transform.js";
 
@@ -80,6 +82,11 @@ export interface SvgTextFont {
 export interface SvgPaintOptions {
   /** Applies a group opacity and returns the resource name to use. */
   readonly extGStateFor?: (opacity: number) => string;
+  /**
+   * Registers a gradient and returns the shading resource name. Absent means
+   * gradients are skipped, which paints nothing rather than a wrong colour.
+   */
+  readonly shadingFor?: (gradient: CapturedGradient) => string;
   /**
    * Resolves the font for a text run. Text is skipped when this is absent or
    * returns nothing — a chart with unlabelled axes beats a broken PDF.
@@ -200,7 +207,8 @@ export function paintSvg(
     group.transform(...placement);
 
     for (const path of svg.paths) {
-      if (!path.fill && !path.stroke) continue;
+      const gradient = path.fillGradient;
+      if (!path.fill && !path.stroke && !gradient) continue;
       if (path.opacity <= 0) continue;
 
       group.scoped((shape) => {
@@ -221,11 +229,31 @@ export function paintSvg(
           if (path.dashArray.length > 0) shape.setDash(path.dashArray, path.dashOffset);
         }
 
+        // A gradient is not a colour: it is painted by flooding the shape's
+        // own clip, so it needs the path twice — once to clip with, once to
+        // stroke — and the fill has to happen before the stroke so the
+        // outline stays on top.
+        const shadingName =
+          gradient && options.shadingFor ? options.shadingFor(gradient) : undefined;
+        const matrix = shadingName ? gradientMatrix(gradient as CapturedGradient, path.segments) : undefined;
+
+        if (shadingName && matrix) {
+          shape.scoped((flooded) => {
+            appendPath(flooded, path);
+            flooded.clip(path.fillRule);
+            flooded.transform(...matrix);
+            flooded.shading(shadingName);
+          });
+        }
+
         appendPath(shape, path);
 
         if (path.fill && path.stroke) shape.fillAndStroke(path.fillRule);
         else if (path.fill) shape.fill(path.fillRule);
-        else shape.stroke();
+        else if (path.stroke) shape.stroke();
+        // The path was only needed as a clip for the shading, and a path with
+        // no painting operator would be left dangling in the stream.
+        else shape.endPath();
       });
 
       painted += 1;

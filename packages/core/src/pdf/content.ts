@@ -129,6 +129,17 @@ export class ContentStream {
     return this;
   }
 
+  /**
+   * `sh` — paint a shading over the current clip.
+   *
+   * Unlike a pattern fill this has no path of its own: it floods everything
+   * the clip allows, so callers clip to the shape first.
+   */
+  shading(resourceName: string): this {
+    this.#writer.writeAscii(`${encodeName(resourceName)} sh\n`);
+    return this;
+  }
+
   // --- Colour ---------------------------------------------------------------
 
   /** `rg` — non-stroking colour, components in 0–1. */
