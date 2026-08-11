@@ -185,6 +185,15 @@ export interface PaintOptions {
 export interface PageBand {
   readonly top: number;
   readonly bottom: number;
+  /**
+   * This band is the first page holding content, so it also owns anything
+   * measuring above it. Left unset for bands that are not a whole page —
+   * repeated table sections have their own span and must not absorb the
+   * document.
+   */
+  readonly first?: boolean;
+  /** As `first`, for the last page holding content and anything below it. */
+  readonly last?: boolean;
 }
 
 /** Does a measured rect touch this band at all? */
@@ -357,15 +366,22 @@ const BAND_EPSILON = 0.5;
  * The top edge decides. Using the baseline instead would move a line to the
  * next page while its ascenders stayed on this one.
  *
- * Both comparisons are shifted by the same tolerance, so the bands still
- * partition the document exactly: every line has one owner, and none is
- * counted twice. Testing the raw edge instead loses any line that measures a
- * fraction above the first page's top — which is how the heading of the corpus
- * invoice disappeared on WebKit alone, where the two lines flush with y = 0
- * were the only ones in the document at the boundary.
+ * Interior boundaries are shifted by the same tolerance at both ends, so the
+ * bands still partition the document exactly: every line has one owner, and
+ * none is counted twice.
+ *
+ * The outermost boundaries are not boundaries at all. A line can sit above the
+ * top of the content box — a heading whose font is taller than its line box
+ * does exactly that, and the browser paints it there — and there is no page
+ * before the first one for it to belong to. So the first page owns everything
+ * above it and the last owns everything below, rather than that text being
+ * assigned to no page and silently dropped. Two separate corpus documents lost
+ * their heading to this before the rule was written down.
  */
 export function ownsLine(line: { rect: { y: number } }, band: PageBand): boolean {
-  return line.rect.y >= band.top - BAND_EPSILON && line.rect.y < band.bottom - BAND_EPSILON;
+  const above = band.first ? -Infinity : band.top - BAND_EPSILON;
+  const below = band.last ? Infinity : band.bottom - BAND_EPSILON;
+  return line.rect.y >= above && line.rect.y < below;
 }
 
 export interface PageFurniture {

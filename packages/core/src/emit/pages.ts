@@ -121,6 +121,12 @@ export function paintPagedDocument(
     }
   }
 
+  // Which pages are the outer edges of the content. Blank pages generated for
+  // parity show nothing, so content above the document cannot land on one.
+  const withContent = slices.filter((slice) => !slice.blank).map((slice) => slice.index);
+  const firstContent = withContent[0];
+  const lastContent = withContent[withContent.length - 1];
+
   for (const [index, slice] of slices.entries()) {
     const page$ = contexts[index] as PageContext;
     const page = pages[index] as PdfPage;
@@ -137,7 +143,14 @@ export function paintPagedDocument(
       .map((table) => table.footer?.node)
       .filter((node): node is NonNullable<typeof node> => node !== undefined);
 
-    paintPage(page, measured, context, page$.content, slice, {
+    const band = {
+      top: slice.top,
+      bottom: slice.bottom,
+      first: slice.index === firstContent,
+      last: slice.index === lastContent,
+    };
+
+    paintPage(page, measured, context, page$.content, band, {
       header,
       headerHeight: slice.reservedTop,
       footer,

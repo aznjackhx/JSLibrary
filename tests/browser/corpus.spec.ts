@@ -28,6 +28,7 @@ async function renderDocument(page: Page, document_: CorpusDocument): Promise<Ui
 
   const fonts = document_.fonts.map((font) => ({
     family: font.family,
+    weight: font.weight ?? 400,
     data: [...fontBytes(font.file)],
   }));
 
@@ -38,6 +39,7 @@ async function renderDocument(page: Page, document_: CorpusDocument): Promise<Ui
         metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
         fonts: fonts.map((font) => ({
           family: font.family,
+          weight: font.weight,
           data: new Uint8Array(font.data),
         })),
       });
@@ -93,13 +95,42 @@ const normalise = (value: string): string => value.replaceAll(/\s+/g, " ").trim(
 const sorted = (value: string): string =>
   [...value.replaceAll(" ", "")].sort().join("");
 
+/** How many times each character occurs, ignoring spaces. */
+function tally(value: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const character of value.replaceAll(" ", "")) {
+    counts.set(character, (counts.get(character) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Every character the browser showed, at least as often, somewhere in the PDF.
+ *
+ * Containment rather than equality, because page furniture legitimately adds
+ * text the source never had. Counted rather than merely present, so losing one
+ * of a repeated word still fails. Deliberately blind to order: furniture is
+ * interleaved with the prose it sits between, and a paragraph split across a
+ * page break has a page number extracted in the middle of it.
+ */
+function missingFrom(extracted: string, shown: string): string[] {
+  const available = tally(extracted);
+  const gaps: string[] = [];
+
+  for (const [character, needed] of tally(shown)) {
+    const have = available.get(character) ?? 0;
+    if (have < needed) gaps.push(`${JSON.stringify(character)} ${have}/${needed}`);
+  }
+  return gaps;
+}
+
 for (const document_ of CORPUS) {
   test.describe(document_.name, () => {
     test(`renders — ${document_.purpose}`, async ({ page }) => {
       const bytes = await renderDocument(page, document_);
       const result = await extract(bytes);
 
-      expect(result.pages).toBeGreaterThan(0);
+      expect(result.pages).toBeGreaterThanOrEqual(document_.minPages ?? 1);
       expect(bytes.length).toBeGreaterThan(0);
     });
 
@@ -120,6 +151,11 @@ for (const document_ of CORPUS) {
 
       const extracted = normalise((await extract(bytes)).text);
       const expected = normalise(shown);
+
+      if (document_.roundTrip === "superset") {
+        expect(missingFrom(extracted, expected)).toEqual([]);
+        return;
+      }
 
       if (document_.roundTrip === "unordered") {
         // Same characters, any order: still catches anything dropped or

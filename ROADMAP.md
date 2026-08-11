@@ -42,6 +42,15 @@ paid for itself immediately.
   and inside table cells.
 - **A framework-shaped invoice and nested tables with `colspan`/`rowspan`
   render correctly.** Flexbox, grid, badges and per-side borders all held.
+- **Two documents silently lost their heading.** Content sitting above the top
+  of the first page belonged to no page at all and was never painted — the
+  invoice's heading on WebKit alone, a fraction below zero where the other two
+  engines said exactly zero, and then the long report's title on every engine,
+  five pixels up, because a heading whose font is taller than its line box
+  overflows above it. Both are fixed: the first page now owns everything above
+  it and the last everything below, since there is no page beyond them for that
+  text to belong to. Neither was visible to any test that only compared the
+  emitter against itself.
 
 The Arabic document is committed with its gap asserted as an *expected
 failure*, so the day shaping lands, CI turns red and the annotation has to go.
@@ -75,13 +84,14 @@ expected-failure annotation is removed.
 
 ### 1. Finish the fixture corpus — M
 
-Five documents exist: invoice, nested tables, Hebrew, Arabic, Japanese. Still
-missing:
+Six documents exist: invoice, nested tables, Hebrew, Arabic, Japanese, and a
+thirty-page report in proportional type with running headers and page counters
+— which closed two of the four gaps below and found the missing-heading bug on
+its first run. Still missing:
 
-- A document using a real proportional web font, not a monospace test face
 - Images at several DPIs, including one with transparency
-- A dashboard: several charts, legends and axis labels on one page
-- A long-form report that exercises running headers over 30+ pages
+- A dashboard: several charts, legends and axis labels on one page — blocked in
+  part on SVG text (#4), which would leave the charts unlabelled today
 
 **Done when:** each renders correctly, each is in CI, and every bug it found
 has a regression test that fails without its fix.
