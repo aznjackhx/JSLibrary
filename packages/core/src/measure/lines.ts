@@ -169,7 +169,29 @@ export function measureTextNode(node: Text, options: LineMeasurementOptions): Me
         (candidate) => centre >= candidate.top && centre <= candidate.bottom,
       );
     }
-    if (lineIndex === -1) continue;
+    if (lineIndex === -1) {
+      // Neither test matched. Take the nearest line rather than dropping the
+      // cluster: a glyph the browser painted must appear in the output, and
+      // "we could not tell which line it belongs to" is never a reason to
+      // omit it. WebKit reports a text node's line rects and a single
+      // cluster's bounds against slightly different boxes for the first line
+      // of a flex item, which used to lose a whole paragraph — the heading of
+      // the corpus invoice, silently, on one engine only.
+      const centre = rect.top + rect.height / 2;
+      let nearest = 0;
+      let best = Infinity;
+
+      lineRects.forEach((candidate, index) => {
+        const candidateCentre = candidate.top + candidate.height / 2;
+        const distance = Math.abs(candidateCentre - centre);
+        if (distance < best) {
+          best = distance;
+          nearest = index;
+        }
+      });
+
+      lineIndex = nearest;
+    }
 
     const bucket = buckets[lineIndex];
     if (!bucket) continue;
