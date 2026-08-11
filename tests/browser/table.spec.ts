@@ -17,6 +17,9 @@ import {
   ROW_COUNT,
   rowLabel,
   tablePageHtml,
+  tallRowTableHtml,
+  NOTE_LINES,
+  noteLine,
 } from "../fixtures/table-page.js";
 import { renderFontBytes } from "../fixtures/render-page.js";
 
@@ -25,7 +28,11 @@ const CORE_BUNDLE = resolve(import.meta.dirname, "../../packages/core/dist/index
 type CoreModule = typeof import("@pkg/core");
 
 async function renderTable(page: Page, footer = false): Promise<Uint8Array> {
-  await page.setContent(tablePageHtml({ footer }), { waitUntil: "load" });
+  return renderHtml(page, tablePageHtml({ footer }));
+}
+
+async function renderHtml(page: Page, html: string): Promise<Uint8Array> {
+  await page.setContent(html, { waitUntil: "load" });
   await page.evaluate(() => document.fonts.ready);
   await page.addScriptTag({ content: readFileSync(CORE_BUNDLE, "utf8") });
 
@@ -169,4 +176,54 @@ test("is deterministic", async ({ page }) => {
   const first = await renderTable(page);
   const second = await renderTable(page);
   expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
+});
+
+test("divides a row taller than a page instead of losing its tail", async ({ page }) => {
+  // The row's note is longer than a page can hold, so the row cannot be kept
+  // whole. What used to happen is that the page ended *below* the row: every
+  // line was still written into the first page's content stream, but most of
+  // them sat past the bottom edge where the page clip hides them.
+  //
+  // So extraction alone proves nothing here — it finds text a reader can never
+  // see. The invariant is about position: everything painted has to land
+  // inside the page it was painted on.
+  const pdf = await renderHtml(page, tallRowTableHtml());
+
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const task = getDocument({ data: pdf.slice(), useSystemFonts: false });
+  const document_ = await task.promise;
+
+  try {
+    const offPage: string[] = [];
+    const seen: string[] = [];
+
+    for (let number = 1; number <= document_.numPages; number += 1) {
+      const rendered = await document_.getPage(number);
+      const [, , , height] = rendered.view as number[];
+      const content = await rendered.getTextContent();
+
+      for (const item of content.items) {
+        if (!("str" in item) || item.str.trim() === "") continue;
+        seen.push(item.str);
+
+        const y = item.transform[5] as number;
+        if (y < 0 || y > (height as number)) {
+          offPage.push(`${item.str} at y=${y.toFixed(1)} on page ${number}`);
+        }
+      }
+    }
+
+    expect(offPage.slice(0, 5), "text painted outside the page").toEqual([]);
+
+    const text = seen.join(" ");
+    for (const index of [1, Math.floor(NOTE_LINES / 2), NOTE_LINES]) {
+      expect(text, `missing note line ${index}`).toContain(noteLine(index));
+    }
+
+    // The rows either side of it survive, in order.
+    expect(text.indexOf(rowLabel(1))).toBeLessThan(text.indexOf(noteLine(1)));
+    expect(text.indexOf(noteLine(NOTE_LINES))).toBeLessThan(text.indexOf(rowLabel(3)));
+  } finally {
+    await task.destroy();
+  }
 });

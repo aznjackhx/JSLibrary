@@ -156,13 +156,24 @@ strength because honouring it needs a luminosity soft mask. A paint server
 that is not a gradient — a `pattern` — still paints nothing rather than a
 wrong flat colour.
 
-### 6. Split a table row taller than a page — M
+### 6. Split a box taller than a page — done
 
-Carried since M5. Such a row currently overflows the page. A financial table
-with a long note in a cell hits this immediately.
+Carried since M5, and broader than tables: *any* atom taller than the page had
+its tail clipped away — a row marked `break-inside: avoid`, a tall figure, an
+unbreakable block. The page ended below the atom, so everything past the page
+edge was written into the content stream and then hidden by the page clip,
+with nothing to indicate content was missing.
 
-**Done when:** a too-tall row divides across pages with its borders closed and
-reopened correctly, with a golden image.
+Such an atom is now divided at the page edge and continues overleaf, which is
+what a browser does. The `overflowed` flag still reports it, because a box that
+asked not to be broken was broken anyway.
+
+Worth recording how nearly this shipped untested. The first regression test
+passed with the fix reverted, twice over: text extraction finds glyphs that are
+painted off the visible page, and a plain `<tr>` is not an atom at all, so its
+lines were already breaking normally and the oversized path never ran. The test
+now marks the rows `break-inside: avoid` — the authored intent that creates the
+problem — and is confirmed to fail without the fix.
 
 ### 7. Ship the commerce, not just the code — M
 

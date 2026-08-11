@@ -87,26 +87,38 @@ describe("paginate", () => {
     expect(slices[0]?.bottom).toBeLessThanOrEqual(90);
   });
 
-  it("places an atom taller than the page and flags the overflow", () => {
-    const tall: BreakAtom[] = [{ kind: "replaced", top: 0, bottom: 250 }];
+  it("divides an atom taller than the page instead of losing its tail", () => {
+    // 250 of content into 100-high pages. Ending the page below the atom would
+    // put 150 of it past the bottom of a page, where it is clipped away: a
+    // table row with a long note in a cell printed its first page and nothing
+    // after it.
+    const tall: BreakAtom[] = [{ kind: "avoid", top: 0, bottom: 250 }];
     const slices = paginate(model(tall), { pageHeight: 100, contentHeight: 250 });
 
     expect(slices[0]?.overflowed).toBe(true);
-    // And it terminates rather than looping for a break that cannot exist.
-    expect(slices.length).toBeGreaterThanOrEqual(1);
+    expect(slices[0]?.bottom).toBe(100);
+
+    // Every part of the atom is on some page, and the pages tile it.
+    expect(slices.length).toBeGreaterThan(1);
+    expect(slices[slices.length - 1]?.bottom).toBeGreaterThanOrEqual(250);
+    for (let index = 1; index < slices.length; index += 1) {
+      expect(slices[index]?.top).toBe(slices[index - 1]?.bottom);
+    }
   });
 
   it("resumes normally after an oversized atom", () => {
     const atoms: BreakAtom[] = [
-      { kind: "replaced", top: 0, bottom: 250 },
+      { kind: "avoid", top: 0, bottom: 250 },
       ...lines(4, 20, 0, 250),
     ];
     const slices = paginate(model(atoms), { pageHeight: 100, contentHeight: 330 });
 
     expect(slices[0]?.overflowed).toBe(true);
-    expect(slices.length).toBeGreaterThan(1);
-    expect(slices[1]?.top).toBe(250);
-    expect(slices[1]?.overflowed).toBe(false);
+    expect(slices.length).toBeGreaterThan(2);
+
+    // The page that starts after the tall atom ends is an ordinary page again.
+    const after = slices.find((slice) => slice.top >= 250);
+    expect(after?.overflowed).toBe(false);
   });
 
   it("terminates on pathological input", () => {
@@ -117,7 +129,16 @@ describe("paginate", () => {
       bottom: index * 200 + 200,
     }));
     const slices = paginate(model(atoms), { pageHeight: 50, contentHeight: 4000 });
-    expect(slices.length).toBeLessThanOrEqual(40);
+
+    // 4000 of content into pages of 50 is 80 pages, and every one of them
+    // carries content. The bound that matters is that pagination is
+    // proportional to the document and always advances — not that it is short.
+    // A tighter bound would only be satisfiable by throwing content away,
+    // which is what ending each page below an oversized atom used to do.
+    expect(slices.length).toBe(80);
+    for (let index = 1; index < slices.length; index += 1) {
+      expect(slices[index]?.top).toBeGreaterThan(slices[index - 1]?.top as number);
+    }
   });
 
   it("rejects a non-positive page height", () => {

@@ -7,9 +7,10 @@
  * headers — is a constraint layered onto that loop rather than a different
  * algorithm.
  *
- * The one case with no good answer is an atom taller than the page. It cannot
- * fit anywhere, so it is placed and allowed to overflow rather than looping
- * forever looking for a break that does not exist.
+ * The one case with no good answer is an atom taller than the page. No break
+ * inside it can be avoided, so it is divided at the page edge and continues
+ * overleaf — reported through `overflowed`, because a box that asked not to be
+ * broken was broken anyway.
  */
 
 import type { BreakAtom, FragmentModel, PageParity } from "./atoms.js";
@@ -143,10 +144,17 @@ export function paginate(model: FragmentModel, options: PaginateOptions): PageSl
           // End the page above the atom that did not fit.
           breakY = firstOverflowingTop;
         } else {
-          // The very first atom on this page is taller than the page itself.
-          // Nothing can be done but place it and move past it.
-          const tall = atoms[scan] as BreakAtom;
-          breakY = tall.bottom;
+          // The first atom on this page is taller than the page itself, so no
+          // break inside it can be avoided — the only question is where.
+          //
+          // Ending the page below it, which is what this did, runs it past the
+          // bottom of the page where it is clipped and simply lost: a table row
+          // with a long note in a cell showed its first page and nothing after.
+          // Cutting at the page limit instead divides the atom and lets the
+          // rest continue overleaf, which is what a browser does and what a
+          // reader needs. The overflow is still reported, because breaking
+          // inside a box that asked not to be broken is worth knowing about.
+          breakY = limit;
           overflowed = true;
         }
       } else {
