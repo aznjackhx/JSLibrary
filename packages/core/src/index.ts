@@ -11,7 +11,9 @@ import { buildOutlineTree, collectHeadings, writeOutline } from "./emit/outline.
 import { paintPagedDocument } from "./emit/pages.js";
 import { NotImplementedError, RenderError } from "./errors.js";
 import { describeFace, FontError } from "./errors.js";
+import type { MeasuredNode } from "./measure/types.js";
 import { Font } from "./fonts/font.js";
+import { scriptsNeedingShaping, shapingWarning } from "./fonts/shaping.js";
 import { FontRegistry, type FontStyle } from "./fonts/resolve.js";
 import { measure } from "./measure/index.js";
 import {
@@ -150,6 +152,14 @@ export async function render(
     stringSetRules,
   });
 
+  // Said once per render, after measurement so it is driven by the text that
+  // actually laid out rather than by markup that may be hidden. Rendering
+  // continues: a document with one Arabic word in an otherwise Latin report
+  // should still produce its PDF, and the caller decides what to do about it.
+  const unshaped = scriptsNeedingShaping(textOf(measured.document.root));
+  const warning = shapingWarning(unshaped);
+  if (warning) console.warn(warning);
+
   const pdf = new PdfDocument({
     info: {
       title: resolved.metadata.title,
@@ -285,4 +295,10 @@ function buildRegistry(fonts: RenderOptions["fonts"]): FontRegistry {
   }
 
   return registry;
+}
+
+/** Every character the measured tree will paint, concatenated. */
+function textOf(node: MeasuredNode): string {
+  if (node.kind === "text") return node.lines.map((line) => line.text).join("");
+  return node.children.map((child) => textOf(child)).join("");
 }

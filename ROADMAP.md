@@ -102,10 +102,14 @@ So a shaper for Arabic needs Unicode joining classes plus `GSUB` lookup types
 positioning work. **L, not XL.** Indic reordering is a separate and larger
 problem, and should be quoted separately rather than folded into this.
 
-**Interim, and worth doing regardless:** detect scripts that need shaping and
-say so, rather than silently emitting nonsense. This is a product decision —
-refusing outright versus rendering wrongly with a warning — so it is not made
-here.
+**Interim — done.** Scripts needing shaping are detected and warned about, and
+the render continues. Decided deliberately in favour of warning over refusing:
+a mostly-Latin report with one Arabic word should still produce its PDF, and
+the caller decides what to do about it. Detection is by character range rather
+than by `lang`, since a language tag is advisory and often absent or wrong
+while the characters are the fact. Latin, Greek, Cyrillic, Hebrew and CJK are
+deliberately *not* warned about — they render correctly from `cmap` alone, and
+warning about them would train the reader to ignore the warning.
 
 **Done when:** the Arabic corpus document renders as joined words and its
 expected-failure annotation is removed.
@@ -134,10 +138,11 @@ Rejected outright today (`sfnt.ts`): decoding needs a Brotli decompressor,
 which does not fit the 60 KB budget. WOFF2 is the dominant web font format, so
 a customer's brand font is more likely WOFF2 than anything else.
 
-**The decision this forces:** either ship Brotli in a lazily-loaded chunk
-outside the core budget, or require callers to hand over decompressed bytes and
-document it loudly. Both are defensible; the current behaviour — a hard error —
-is not, for a paid product.
+**Decided:** ship Brotli in a lazily-loaded chunk outside the core budget.
+Callers who never touch WOFF2 pay nothing for it; those who do take one extra
+fetch and their brand font simply works, which is the promise worth keeping.
+The alternative — requiring callers to decompress — keeps the core smaller but
+pushes real work onto every customer with a WOFF2 brand font.
 
 **Done when:** a WOFF2 brand font renders, and the size budget still holds for
 callers who do not use one.

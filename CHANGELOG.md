@@ -58,7 +58,9 @@ was wrong rather than what was touched.
 Named here rather than discovered later:
 
 - **No text shaping.** Arabic, Persian, Urdu and Indic scripts render with
-  isolated letter forms — wrong, not merely degraded. Scoped in `ROADMAP.md`.
+  isolated letter forms — wrong, not merely degraded. The renderer now detects
+  these scripts and warns, naming the script and the symptom, rather than
+  producing unreadable output silently. Scoped in `ROADMAP.md`.
 - **WOFF2 fonts are rejected**; decompressed TrueType or OpenType bytes are
   required.
 - **CFF outlines cannot be subset**, so a font with PostScript outlines fails.
