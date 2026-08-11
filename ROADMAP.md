@@ -26,13 +26,15 @@ Sizes are rough: **S** ≈ a day, **M** ≈ a few days, **L** ≈ a week or more
 
 ## What the corpus found on its first run
 
-Item 1 is now partly done — five documents, held to shared invariants — and it
-paid for itself immediately.
+The corpus is item 1, now finished at eight documents held to shared
+invariants. It paid for itself on its first run and kept paying.
 
 - **Arabic renders as disconnected letters.** There is no text shaping: glyphs
   are looked up through the font's `cmap` alone, so every letter gets its
-  isolated form and the words come out unjoined and badly positioned. This is
-  new item **0** below, and it is larger than anything else on this list.
+  isolated form and the words come out unjoined. This is item **0** below.
+  (The first version of this note also said "badly positioned", which was
+  wrong: positions come from the browser per cluster, so they are right — only
+  the glyph forms are not.)
 - **Hebrew renders correctly.** Right-to-left flow, spacing and an embedded
   Latin number all check out by eye against the browser. Its text round-trip
   needed the unordered comparison, because pdf.js reports right-to-left runs
@@ -42,6 +44,9 @@ paid for itself immediately.
   and inside table cells.
 - **A framework-shaped invoice and nested tables with `colspan`/`rowspan`
   render correctly.** Flexbox, grid, badges and per-side borders all held.
+- **A dashboard's chart labels drew nothing**, and **an explicit page size was
+  silently rotated to portrait** — found together, since the second was hiding
+  behind the first. Both fixed; see items 4 and 5.
 - **Two documents silently lost their heading.** Content sitting above the top
   of the first page belonged to no page at all and was never painted — the
   invoice's heading on WebKit alone, a fraction below zero where the other two
