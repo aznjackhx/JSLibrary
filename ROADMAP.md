@@ -206,7 +206,8 @@ None of this exists yet:
 - A generated signing keypair, with the public half committed and the private
   half stored somewhere durable and secret
 - A purchase → key delivery path, however manual at first
-- `CHANGELOG.md`, semantic versioning, and a tagged release
+- Semantic versioning and a tagged release. `CHANGELOG.md` now exists, with
+  everything so far under **Unreleased** and the known gaps named in it
 - A documentation site, or at minimum a README that stands on its own
 - A stated support policy and a security contact
 
