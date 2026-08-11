@@ -152,6 +152,12 @@ for (const document_ of CORPUS) {
       const extracted = normalise((await extract(bytes)).text);
       const expected = normalise(shown);
 
+      // Asserted before the round-trip, because these are exactly the strings
+      // the round-trip cannot check.
+      for (const required of document_.mustContain ?? []) {
+        expect(extracted, `missing ${required}`).toContain(required);
+      }
+
       if (document_.roundTrip === "superset") {
         expect(missingFrom(extracted, expected)).toEqual([]);
         return;

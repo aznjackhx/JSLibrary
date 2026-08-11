@@ -76,6 +76,14 @@ export interface CorpusDocument {
    */
   readonly imageWidths?: readonly number[];
   /**
+   * Strings the PDF must contain that `innerText` never reports.
+   *
+   * Text inside an `<svg>` is laid out in its own tree, so the round-trip
+   * comparison cannot see it: a dashboard whose every axis label vanished
+   * would still satisfy `superset`. These are asserted directly.
+   */
+  readonly mustContain?: readonly string[];
+  /**
    * A gap this document is known to expose, as a sentence.
    *
    * The round-trip test is then asserted to *fail*, so that fixing the gap
@@ -489,6 +497,126 @@ const images: CorpusDocument = {
   }),
 };
 
+
+/**
+ * A dashboard: three charts on one page, with legends and axis labels.
+ *
+ * The brief names this as a target use case, and it is the document that
+ * exercises SVG and text together — a chart is worthless in print if the
+ * numbers beside it are missing, and until labels rendered this page would
+ * have come out as unannotated shapes.
+ */
+const dashboard: CorpusDocument = {
+  name: "dashboard",
+  purpose: "several charts on one page, with legends and axis labels",
+  fonts: [MONO],
+  roundTrip: "superset",
+  roundTripNote:
+    "Text inside SVG is laid out in its own tree, which innerText does not report.",
+  // Every label on every chart, since the round-trip comparison is blind to
+  // them. One from each axis, each legend and each series.
+  mustContain: [
+    "20",
+    "Q1",
+    "Q4",
+    "GBP m",
+    "2024",
+    "2026",
+    "Enterprise",
+    "Self-serve",
+    "North",
+    "Export",
+    "1,204 tickets",
+    "742 tickets",
+    "Twelve months to March 2026",
+  ],
+  html: page({
+    fonts: [MONO],
+    css: `
+  #subject { font-family: "Corpus Mono", monospace; font-size: 10pt; color: rgb(24,24,27); }
+  h1 { font-size: 16pt; margin: 0 0 4px; }
+  .sub { color: rgb(113,113,122); font-size: 9pt; margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { border: 1px solid rgb(228,228,231); border-radius: 6px; padding: 12px; }
+  .card h2 { font-size: 11pt; margin: 0 0 8px; }
+  .wide { grid-column: 1 / -1; }
+  svg { display: block; font-family: "Corpus Mono", monospace; }
+  .axis { font-size: 7px; fill: rgb(113,113,122); }
+  .key { font-size: 7px; fill: rgb(24,24,27); }`,
+    body: `    <h1>Operations dashboard</h1>
+    <p class="sub">Rolling twelve months to March 2026</p>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Revenue by quarter</h2>
+        <svg width="286" height="143" viewBox="0 0 200 100">
+          <line x1="24" y1="8" x2="24" y2="78" stroke="rgb(212,212,216)" stroke-width="0.7"/>
+          <line x1="24" y1="78" x2="192" y2="78" stroke="rgb(212,212,216)" stroke-width="0.7"/>
+
+          <rect x="36" y="46" width="24" height="32" fill="rgb(30,64,175)"/>
+          <rect x="76" y="34" width="24" height="44" fill="rgb(30,64,175)"/>
+          <rect x="116" y="52" width="24" height="26" fill="rgb(30,64,175)"/>
+          <rect x="156" y="22" width="24" height="56" fill="rgb(30,64,175)"/>
+
+          <text class="axis" x="20" y="11" text-anchor="end">20</text>
+          <text class="axis" x="20" y="45" text-anchor="end">10</text>
+          <text class="axis" x="20" y="80" text-anchor="end">0</text>
+
+          <text class="axis" x="48" y="88" text-anchor="middle">Q1</text>
+          <text class="axis" x="88" y="88" text-anchor="middle">Q2</text>
+          <text class="axis" x="128" y="88" text-anchor="middle">Q3</text>
+          <text class="axis" x="168" y="88" text-anchor="middle">Q4</text>
+          <text class="axis" transform="translate(8,43) rotate(-90)"
+                text-anchor="middle">GBP m</text>
+        </svg>
+      </div>
+
+      <div class="card">
+        <h2>Retention</h2>
+        <svg width="286" height="143" viewBox="0 0 200 100">
+          <polyline points="30,66 66,54 102,58 138,38 174,26" fill="none"
+                    stroke="rgb(30,64,175)" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+          <polyline points="30,72 66,70 102,66 138,64 174,60" fill="none"
+                    stroke="rgb(153,27,27)" stroke-width="1.5"
+                    stroke-dasharray="4 3"/>
+
+          <circle cx="174" cy="26" r="2.5" fill="rgb(30,64,175)"/>
+
+          <text class="axis" x="30" y="88">2024</text>
+          <text class="axis" x="174" y="88" text-anchor="end">2026</text>
+
+          <rect x="112" y="6" width="6" height="3" fill="rgb(30,64,175)"/>
+          <text class="key" x="122" y="9">Enterprise</text>
+          <rect x="112" y="14" width="6" height="3" fill="rgb(153,27,27)"/>
+          <text class="key" x="122" y="17">Self-serve</text>
+        </svg>
+      </div>
+
+      <div class="card wide">
+        <h2>Support load by region</h2>
+        <svg width="600" height="129" viewBox="0 0 400 86">
+          <line x1="60" y1="70" x2="392" y2="70" stroke="rgb(212,212,216)" stroke-width="0.7"/>
+
+          <rect x="60" y="14" width="86" height="12" fill="rgb(30,64,175)"/>
+          <rect x="60" y="32" width="132" height="12" fill="rgb(37,99,235)"/>
+          <rect x="60" y="50" width="58" height="12" fill="rgb(147,197,253)"/>
+
+          <text class="axis" x="56" y="23" text-anchor="end">North</text>
+          <text class="axis" x="56" y="41" text-anchor="end">South</text>
+          <text class="axis" x="56" y="59" text-anchor="end">Export</text>
+
+          <text class="key" x="152" y="23">1,204 tickets</text>
+          <text class="key" x="198" y="41">1,878 tickets</text>
+          <text class="key" x="124" y="59">742 tickets</text>
+
+          <text class="axis" x="226" y="82" text-anchor="middle">Twelve months to March 2026</text>
+        </svg>
+      </div>
+    </div>`,
+  }),
+};
+
 export const CORPUS: readonly CorpusDocument[] = [
   invoice,
   tables,
@@ -497,4 +625,5 @@ export const CORPUS: readonly CorpusDocument[] = [
   japanese,
   report,
   images,
+  dashboard,
 ];

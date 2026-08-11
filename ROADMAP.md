@@ -82,20 +82,23 @@ refuse with a clear error, rather than silently emitting nonsense.
 **Done when:** the Arabic corpus document renders as joined words and its
 expected-failure annotation is removed.
 
-### 1. Finish the fixture corpus — M
+### 1. Fixture corpus — done
 
-Seven documents exist: invoice, nested tables, Hebrew, Arabic, Japanese, a
-thirty-page report in proportional type with running headers and page counters
-— which found the missing-heading bug on its first run — and images at three
-densities with an alpha channel, which found nothing: source pixels and soft
-masks both survive, and the output was checked against the browser by eye
-before the assertions were written. Still missing:
+Eight documents, all in CI, all held to the same invariants: a framework-shaped
+invoice, nested tables with spans, Hebrew, Arabic, Japanese, a thirty-page
+report in proportional type with running headers and page counters, raster
+images at three densities with an alpha channel, and a dashboard of charts with
+legends and axis labels.
 
-- A dashboard: several charts, legends and axis labels on one page. No longer
-  blocked — SVG text (#4) is done
+Between them they found the missing-heading bug, the silent page rotation, and
+the absence of text shaping. The images document found nothing — source pixels
+and soft masks both survive — which is worth as much as the others: it was
+checked against the browser by eye before its assertions were written.
 
-**Done when:** each renders correctly, each is in CI, and every bug it found
-has a regression test that fails without its fix.
+Each new bug has a regression test that fails without its fix, and each
+document's own weak spot is named where the invariants cannot reach it — SVG
+labels are asserted directly, because `innerText` cannot see inside an `<svg>`
+and the round-trip comparison would pass with every axis label gone.
 
 ### 2. WOFF2 support — L
 
