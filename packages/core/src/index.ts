@@ -118,7 +118,6 @@ export async function render(
           width: `${resolved.page.size.width}pt`,
           height: `${resolved.page.size.height}pt`,
         },
-        orientation: "portrait",
         margins: {
           top: `${resolved.page.margins.top}pt`,
           right: `${resolved.page.margins.right}pt`,

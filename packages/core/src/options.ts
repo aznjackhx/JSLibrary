@@ -114,7 +114,7 @@ export function resolveOptions(options: RenderOptions = {}): ResolvedOptions {
   const metadata = options.metadata ?? {};
 
   return {
-    page: pageGeometry(options.pageSize, options.orientation ?? "portrait", options.margins),
+    page: pageGeometry(options.pageSize, options.orientation, options.margins),
     // Precise is the default: correctness first, with `fast` as an opt-in.
     textMode: options.textMode ?? "precise",
     fonts: options.fonts ?? [],

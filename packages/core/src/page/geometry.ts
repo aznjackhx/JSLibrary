@@ -72,13 +72,24 @@ export function isNamedPageSize(value: string): boolean {
   return Object.prototype.hasOwnProperty.call(NAMED_SIZES, value.toLowerCase());
 }
 
-/** Resolve a page size to points, applying orientation. */
+/**
+ * Resolve a page size to points, applying orientation.
+ *
+ * Orientation is optional, and its absence means something: a named size with
+ * no orientation is portrait, because that is how sheet sizes are quoted, but
+ * an explicit width and height with no orientation is taken exactly as given.
+ * Normalising those to portrait as well — which this used to do — silently
+ * turned a request for 400x320 into 320x400.
+ */
 export function resolvePageSize(
   input: PageSizeInput = DEFAULT_PAGE_SIZE,
-  orientation: Orientation = "portrait",
+  orientation?: Orientation,
 ): PageSize {
   let width: Pt;
   let height: Pt;
+  // A named size is quoted in portrait and orientation turns it; an explicit
+  // width and height are the caller saying what they want.
+  let named_ = false;
 
   if (typeof input === "string") {
     const named = NAMED_SIZES[input.toLowerCase() as keyof typeof NAMED_SIZES];
@@ -89,6 +100,7 @@ export function resolvePageSize(
     }
     width = toPt(named.width);
     height = toPt(named.height);
+    named_ = true;
   } else {
     width = toPt(input.width);
     height = toPt(input.height);
@@ -98,14 +110,12 @@ export function resolvePageSize(
     throw new RangeError(`Page size must be positive, received ${width}x${height}pt`);
   }
 
-  // Orientation is applied to the resolved box rather than to named sizes only,
-  // so a custom size honours it too.
-  const landscape = orientation === "landscape";
-  return landscape && height > width
-    ? { width: height, height: width }
-    : !landscape && width > height
-      ? { width: height, height: width }
-      : { width, height };
+  // An explicit size with no orientation asked for is the caller's own answer.
+  const wanted = orientation ?? (named_ ? "portrait" : undefined);
+  if (!wanted) return { width, height };
+
+  const landscape = wanted === "landscape";
+  return landscape === width > height ? { width, height } : { width: height, height: width };
 }
 
 export function resolveMargins(input: MarginsInput = DEFAULT_MARGIN): Margins {
@@ -139,7 +149,7 @@ export function resolveMargins(input: MarginsInput = DEFAULT_MARGIN): Margins {
  */
 export function pageGeometry(
   sizeInput?: PageSizeInput,
-  orientation: Orientation = "portrait",
+  orientation?: Orientation,
   marginsInput?: MarginsInput,
 ): PageGeometry {
   const size = resolvePageSize(sizeInput, orientation);

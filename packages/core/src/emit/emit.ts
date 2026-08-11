@@ -90,7 +90,7 @@ export class EmissionContext {
   }
 
   /** Resolve a measured style to a font face. */
-  fontFor(style: CapturedStyle): Font {
+  fontFor(style: FontQuery): Font {
     return this.registry.resolveOrFallback({
       families: parseFontFamilyList(style.fontFamily),
       weight: style.fontWeight,
@@ -158,6 +158,15 @@ export class EmissionContext {
     return resourceName;
   }
 }
+
+/**
+ * What resolving a face actually needs.
+ *
+ * Narrower than a full captured style, so a caller with only these three
+ * properties — SVG text, which has no CSS box — can ask without inventing the
+ * rest of one.
+ */
+export type FontQuery = Pick<CapturedStyle, "fontFamily" | "fontWeight" | "fontStyle">;
 
 function normaliseFontStyle(value: string): FontStyle {
   if (value.startsWith("italic")) return "italic";
@@ -288,6 +297,17 @@ function paintVector(
   if (!node.svg) return;
 
   paintSvg(stream, node.svg, node.contentRect, options.transform, {
+    // Text inside the SVG is emitted as text, so it stays selectable and
+    // searchable. It resolves its font the same way body text does: the
+    // computed family, weight and style of the element it came from.
+    fontFor: (run) => {
+      const font = options.context.fontFor(run);
+
+      return {
+        subset: options.context.subsetFor(font),
+        resourceName: options.context.resourceNameFor(options.page, font),
+      };
+    },
     extGStateFor: (opacity) => {
       const state = options.context.document.add(
         dict({ Type: name("ExtGState"), ca: opacity, CA: opacity }),

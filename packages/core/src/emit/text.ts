@@ -103,13 +103,43 @@ export function buildPreciseRun(
   options: TextEmissionOptions,
 ): TextItem[] {
   const { subset, transform, fontSize } = options;
-  const clusters = line.clusters ?? [];
 
+  return buildPositionedRun(
+    (line.clusters ?? []).map((cluster) => ({
+      text: cluster.text,
+      x: transform.x(cluster.x),
+    })),
+    transform.x(line.rect.x),
+    fontSize,
+    subset,
+  );
+}
+
+/**
+ * Pin a sequence of clusters to their measured positions along one baseline.
+ *
+ * Shared by body text and by text inside SVG, which differ only in what space
+ * the coordinates are in — points on the page for one, SVG user units for the
+ * other. The arithmetic is identical and subtle enough to be worth having in
+ * one place.
+ *
+ * Emitting one `Tm` per glyph instead would place them just as accurately, and
+ * costs nothing visually, but it makes a PDF reader treat every glyph as its
+ * own fragment: pdf.js merges neighbours by proximity and silently swallowed a
+ * whole label that began close to where the previous one ended. A `TJ` run is
+ * one text object, so it extracts as one string.
+ */
+export function buildPositionedRun(
+  clusters: readonly { readonly text: string; readonly x: number }[],
+  startX: number,
+  fontSize: number,
+  subset: FontSubset,
+): TextItem[] {
   const items: TextItem[] = [];
   let pending: number[] = [];
 
-  // Pen position in PDF points, tracked as the viewer would.
-  let penX = transform.x(line.rect.x);
+  // Pen position in the caller's units, tracked as the viewer would.
+  let penX = startX;
 
   const flush = (): void => {
     if (pending.length === 0) return;
@@ -118,14 +148,13 @@ export function buildPreciseRun(
   };
 
   for (const cluster of clusters) {
-    const targetX = transform.x(cluster.x);
-    const shift = targetX - penX;
+    const shift = cluster.x - penX;
     const adjustment = -(shift / fontSize) * 1000;
 
     if (Math.abs(adjustment) >= ADJUSTMENT_EPSILON) {
       flush();
       items.push(round(adjustment, 2));
-      penX = targetX;
+      penX = cluster.x;
     }
 
     // A cluster can be several code points — a base plus combining marks — and

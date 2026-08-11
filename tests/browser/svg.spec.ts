@@ -15,6 +15,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   singleShapeHtml,
   svgHtml,
+  svgTextHtml,
   SVG_PAGE_HEIGHT,
   SVG_PAGE_WIDTH,
 } from "../fixtures/svg-page.js";
@@ -223,5 +224,63 @@ test.describe("individual shapes", () => {
       '<line x1="0" y1="50" x2="100" y2="50" stroke="black" stroke-width="10"/>',
     );
     expect(ratio).toBeGreaterThan(0.03);
+  });
+});
+
+test.describe("text", () => {
+  test("draws SVG text where the browser drew it", async ({ page }, testInfo) => {
+    // The comparison that matters: anchoring, `tspan` styling and a rotated
+    // label all have to land in the same place as the browser put them, and a
+    // mirrored or misplaced label moves far more than the tolerance allows.
+    await page.setContent(svgTextHtml(), { waitUntil: "load" });
+    await page.evaluate(() => document.fonts.ready);
+    const browserPng = await page.locator("#subject").screenshot({ scale: "css" });
+
+    const pdf = await renderHtml(page, svgTextHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+    const pdfPng = await renderPdfPageToPng(page, pdf, { scale: PX_PER_PT });
+
+    const diff = comparePngRegion(pdfPng, browserPng, {
+      offsetX: 0,
+      offsetY: 0,
+      threshold: RASTERISER_TOLERANCE,
+      name: `m7/svg-text.${testInfo.project.name}`,
+    });
+
+    expect(
+      diff.diffRatio,
+      `${diff.diffPixels}/${diff.totalPixels} pixels differ (${(diff.diffRatio * 100).toFixed(3)}%)`,
+    ).toBeLessThanOrEqual(0.02);
+  });
+
+  test("keeps SVG text as real text", async ({ page }) => {
+    // A chart whose labels are outlines or pixels is a chart nobody can search,
+    // copy or read with a screen reader. Every label must come back out.
+    const pdf = await renderHtml(page, svgTextHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+
+    const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = getDocument({ data: pdf.slice(), useSystemFonts: false });
+    const document_ = await task.promise;
+
+    try {
+      const content = await (await document_.getPage(1)).getTextContent();
+      const text = content.items
+        .map((item) => ("str" in item ? item.str : ""))
+        .join("")
+        .replaceAll(/\s+/g, " ");
+
+      for (const label of ["100", "0", "Q1", "Q2", "Q3", "Revenue", "GBP", "up", "14%"]) {
+        expect(text, `missing ${label}`).toContain(label);
+      }
+    } finally {
+      await task.destroy();
+    }
+
+    expect(Buffer.from(pdf).toString("latin1")).not.toContain("/Subtype /Image");
+  });
+
+  test("is deterministic", async ({ page }) => {
+    const first = await renderHtml(page, svgTextHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+    const second = await renderHtml(page, svgTextHtml(), SVG_PAGE_WIDTH, SVG_PAGE_HEIGHT);
+    expect(Buffer.from(first).equals(Buffer.from(second))).toBe(true);
   });
 });

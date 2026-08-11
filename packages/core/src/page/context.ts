@@ -198,7 +198,13 @@ export interface PageContextInput {
   /** Used when neither the stylesheet nor the caller specifies. */
   readonly defaults: {
     readonly size: PageSizeInput;
-    readonly orientation: Orientation;
+    /**
+     * Omitted when the default size is already resolved geometry. Supplying
+     * "portrait" here would re-orient a size that has been through
+     * `resolvePageSize` once already, turning an explicit landscape page back
+     * into a portrait one.
+     */
+    readonly orientation?: Orientation | undefined;
     readonly margins: MarginsInput;
   };
   /** True for a page generated to satisfy a side-specific break. */

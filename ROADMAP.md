@@ -91,8 +91,8 @@ densities with an alpha channel, which found nothing: source pixels and soft
 masks both survive, and the output was checked against the browser by eye
 before the assertions were written. Still missing:
 
-- A dashboard: several charts, legends and axis labels on one page — blocked in
-  part on SVG text (#4), which would leave the charts unlabelled today
+- A dashboard: several charts, legends and axis labels on one page. No longer
+  blocked — SVG text (#4) is done
 
 **Done when:** each renders correctly, each is in CI, and every bug it found
 has a regression test that fails without its fix.
@@ -123,13 +123,20 @@ failing. Bigger files, but a rendered document beats an exception.
 
 **Done when:** a CFF font renders with correct metrics and extractable text.
 
-### 4. Text inside SVG — M
+### 4. Text inside SVG — done
 
-Not supported today. Every chart has axis labels; a dashboard is the brief's
-own target use case, and right now it produces a chart with no numbers on it.
+`<text>` and `<tspan>` render as real PDF text with embedded fonts, and the
+labels extract. Positions come from the browser via `getStartPositionOfChar`,
+so `text-anchor`, `dx`/`dy`, `letter-spacing` and `textLength` are honoured
+without any of SVG text layout being reimplemented.
 
-**Done when:** `<text>`, `<tspan>`, `text-anchor` and basic positioning render
-with embedded fonts, and the text extracts.
+It found a bug of its own, in page geometry rather than SVG: an explicit
+`pageSize` was silently rotated to portrait, so a 400x320 page came out
+320x400 and anything near the right edge fell off it. The M7 comparison test
+had been comparing a portrait PDF against a landscape screenshot since it was
+written, and passing, because the shapes it checks sit well inside both.
+
+Still missing inside `<text>`: `textPath`, and per-character `rotate`.
 
 ### 5. Gradients and `use` in SVG — M
 

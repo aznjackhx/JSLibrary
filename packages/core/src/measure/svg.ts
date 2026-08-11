@@ -47,7 +47,48 @@ export interface CapturedPath {
   readonly dashOffset: number;
 }
 
-/** An inline SVG, flattened to paths. */
+/** One character of SVG text, at the position the browser placed it. */
+export interface CapturedSvgGlyph {
+  readonly text: string;
+  /** Baseline origin in the text element's user space. */
+  readonly x: number;
+  readonly y: number;
+}
+
+/**
+ * A run of SVG text, as real text rather than outlines.
+ *
+ * Converting `<text>` to paths would be easier and is what most tools do. It
+ * also makes the axis labels of every chart unselectable and unsearchable,
+ * which is the exact failure this library exists to avoid, so the runs are
+ * carried through to the emitter as text.
+ */
+export interface CapturedSvgText {
+  /**
+   * Per-character positions, read from the browser.
+   *
+   * Empty when the browser's character count disagreed with the run's own
+   * text, in which case the run is placed whole at `x`/`y` instead. Positions
+   * come from the layout engine, so `text-anchor`, `dx`/`dy`, `letter-spacing`
+   * and `textLength` are all already accounted for — none of them is
+   * reimplemented here.
+   */
+  readonly glyphs: readonly CapturedSvgGlyph[];
+  readonly text: string;
+  /** Where the run starts, used when per-character positions are unavailable. */
+  readonly x: number;
+  readonly y: number;
+  /** Transform from the text element's coordinates to the SVG's user space. */
+  readonly transform: Matrix;
+  readonly fontFamily: string;
+  readonly fontSize: number;
+  readonly fontWeight: number;
+  readonly fontStyle: string;
+  readonly fill: MeasuredColor | undefined;
+  readonly opacity: number;
+}
+
+/** An inline SVG, flattened to paths and text runs. */
 export interface CapturedSvg {
   /** Width and height of the rendered box, in CSS pixels. */
   readonly width: number;
@@ -55,6 +96,7 @@ export interface CapturedSvg {
   readonly viewBox: ViewBox | undefined;
   readonly preserveAspectRatio: string;
   readonly paths: readonly CapturedPath[];
+  readonly texts: readonly CapturedSvgText[];
 }
 
 /** Elements that contribute geometry. */
@@ -164,6 +206,110 @@ function parseDashArray(value: string): number[] {
 }
 
 /**
+ * SVG's own whitespace handling, for `xml:space="default"`.
+ *
+ * Newlines and tabs become spaces, runs collapse to one, and the ends of the
+ * whole text element are trimmed. This has to match what the engine did,
+ * because the character indices it answers questions about are indices into
+ * the collapsed string, not into the source markup.
+ */
+function collapseSvgText(value: string): string {
+  return value.replaceAll(/[\t\n\r]/g, " ").replaceAll(/ {2,}/g, " ");
+}
+
+/** The text-bearing elements inside a `<text>`, in document order. */
+function textRuns(root: Element): { element: Element; text: string }[] {
+  const runs: { element: Element; text: string }[] = [];
+
+  const visit = (node: Element): void => {
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3 /* text */) {
+        const data = (child as Text).data;
+        if (data.length > 0) runs.push({ element: node, text: collapseSvgText(data) });
+        continue;
+      }
+      if (child.nodeType === 1 /* element */) visit(child as Element);
+    }
+  };
+
+  visit(root);
+  return runs;
+}
+
+/**
+ * Read one `<text>` element as positioned characters.
+ *
+ * The browser has already resolved anchoring, per-character offsets and any
+ * `textLength` adjustment, and `getStartPositionOfChar` reports where each
+ * character actually sits. Asking it beats reimplementing SVG text layout, for
+ * the same reason the rest of the pipeline measures rather than lays out.
+ */
+function captureText(
+  element: SVGTextElement,
+  transform: Matrix,
+  view: Window & typeof globalThis,
+  into: CapturedSvgText[],
+): void {
+  const runs = textRuns(element);
+  if (runs.length === 0) return;
+
+  // Leading and trailing whitespace of the element as a whole is trimmed, not
+  // of each run: a space between two `tspan`s survives, one before the first
+  // does not.
+  const first = runs[0] as { element: Element; text: string };
+  first.text = first.text.replace(/^ /, "");
+  const last = runs[runs.length - 1] as { element: Element; text: string };
+  last.text = last.text.replace(/ $/, "");
+
+  const total = runs.reduce((sum, run) => sum + run.text.length, 0);
+  // When the engine counts characters differently from this, per-character
+  // positions cannot be trusted to line up, so the run is placed whole.
+  const positioned = total === element.getNumberOfChars();
+
+  let index = 0;
+
+  for (const run of runs) {
+    const length = run.text.length;
+    if (length === 0) continue;
+
+    const start = index;
+    index += length;
+    if (run.text.trim() === "") continue;
+
+    const computed = view.getComputedStyle(run.element);
+    if (computed.display === "none" || computed.visibility === "hidden") continue;
+
+    const glyphs: CapturedSvgGlyph[] = [];
+    if (positioned) {
+      for (let offset = 0; offset < length; offset += 1) {
+        const point = element.getStartPositionOfChar(start + offset);
+        glyphs.push({ text: run.text[offset] as string, x: point.x, y: point.y });
+      }
+    }
+
+    const origin = positioned
+      ? element.getStartPositionOfChar(start)
+      : { x: attributeNumber(element, "x"), y: attributeNumber(element, "y") };
+
+    into.push({
+      glyphs,
+      text: run.text,
+      x: origin.x,
+      y: origin.y,
+      transform,
+      fontFamily: computed.fontFamily,
+      fontSize: Number.parseFloat(computed.fontSize) || 0,
+      fontWeight: Number.parseInt(computed.fontWeight, 10) || 400,
+      fontStyle: computed.fontStyle,
+      // `fill` is the paint for text as it is for shapes; a text element with
+      // `fill: none` is invisible and is not carried through.
+      fill: paintOf(computed.fill),
+      opacity: numberFrom(computed.opacity, 1),
+    });
+  }
+}
+
+/**
  * Flatten an inline SVG into paths.
  *
  * Returns undefined when there is nothing to draw, so a caller can fall back
@@ -175,6 +321,7 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
 
   const box = element.getBoundingClientRect();
   const paths: CapturedPath[] = [];
+  const texts: CapturedSvgText[] = [];
 
   const visit = (node: Element, inherited: Matrix): void => {
     const computed = view.getComputedStyle(node);
@@ -190,6 +337,13 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
     // subtrees, which this does not do; a `use` therefore draws nothing rather
     // than drawing the wrong thing.
     if (tag === "defs" || tag === "symbol" || tag === "mask" || tag === "clippath") return;
+
+    // Text is read as text, and never descended into as though its `tspan`s
+    // were shapes.
+    if (tag === "text") {
+      captureText(node as SVGTextElement, transform, view, texts);
+      return;
+    }
 
     if (SHAPE_TAGS.has(tag)) {
       const segments = segmentsFor(node);
@@ -221,7 +375,7 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
 
   for (const child of element.children) visit(child, IDENTITY);
 
-  if (paths.length === 0) return undefined;
+  if (paths.length === 0 && texts.length === 0) return undefined;
 
   const viewBoxAttribute = element.getAttribute("viewBox");
   const viewBox = viewBoxAttribute ? parseViewBox(viewBoxAttribute) : undefined;
@@ -232,6 +386,7 @@ export function captureSvg(element: SVGSVGElement): CapturedSvg | undefined {
     viewBox,
     preserveAspectRatio: element.getAttribute("preserveAspectRatio") ?? "xMidYMid meet",
     paths,
+    texts,
   };
 }
 

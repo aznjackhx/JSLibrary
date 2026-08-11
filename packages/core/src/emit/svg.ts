@@ -11,12 +11,19 @@
  * it was authored.
  */
 
-import type { CapturedPath, CapturedSvg } from "../measure/svg.js";
+import type { FontSubset } from "../fonts/font.js";
+import type {
+  CapturedPath,
+  CapturedSvg,
+  CapturedSvgGlyph,
+  CapturedSvgText,
+} from "../measure/svg.js";
 import { userSpaceTransform } from "../measure/svg.js";
 import type { MeasuredColor, MeasuredRect } from "../measure/types.js";
 import type { ContentStream } from "../pdf/content.js";
 import { multiply, type Matrix } from "../svg/matrix.js";
 import { pxToPt } from "../units.js";
+import { buildPositionedRun } from "./text.js";
 import type { PageTransform } from "./transform.js";
 
 const LINE_CAPS = { butt: 0, round: 1, square: 2 } as const;
@@ -64,9 +71,20 @@ function appendPath(stream: ContentStream, path: CapturedPath): void {
   }
 }
 
+/** A font, resolved and registered on the page, ready to show glyphs with. */
+export interface SvgTextFont {
+  readonly subset: FontSubset;
+  readonly resourceName: string;
+}
+
 export interface SvgPaintOptions {
   /** Applies a group opacity and returns the resource name to use. */
   readonly extGStateFor?: (opacity: number) => string;
+  /**
+   * Resolves the font for a text run. Text is skipped when this is absent or
+   * returns nothing — a chart with unlabelled axes beats a broken PDF.
+   */
+  readonly fontFor?: (run: CapturedSvgText) => SvgTextFont | undefined;
 }
 
 function setFill(stream: ContentStream, colour: MeasuredColor): void {
@@ -75,6 +93,91 @@ function setFill(stream: ContentStream, colour: MeasuredColor): void {
 
 function setStroke(stream: ContentStream, colour: MeasuredColor): void {
   stream.setStrokeRgb(colour.r / 255, colour.g / 255, colour.b / 255);
+}
+
+/**
+ * Paint one run of SVG text.
+ *
+ * Two coordinate details matter, and the second is easy to get subtly wrong.
+ *
+ * Every character is placed by its own matrix rather than advanced by the
+ * font, because the positions came from the browser and already carry
+ * anchoring, `dx`/`dy` and letter-spacing.
+ *
+ * And the group this sits inside has flipped y so SVG coordinates can be
+ * written verbatim, which would draw text mirrored — so the text matrix flips
+ * back. That counter-flip has to sit *inside* the element's own transform,
+ * not outside it: a reflection either side of a rotation reverses the
+ * rotation, and a label at `rotate(-90)` then reads top-to-bottom instead of
+ * bottom-to-top. So the element transform is folded into the text matrix here
+ * rather than emitted as a `cm` around it.
+ */
+function paintTextRun(
+  stream: ContentStream,
+  run: CapturedSvgText,
+  font: SvgTextFont,
+): boolean {
+  // Characters sharing a baseline are one text object; a run that puts them on
+  // different baselines — per-character `dy` — falls back to placing each on
+  // its own, which is correct but extracts as separate fragments.
+  const lines = baselines(run);
+
+  let drew = false;
+
+  stream.scoped((scoped) => {
+    if (run.fill) setFill(scoped, run.fill);
+
+    scoped.text((text) => {
+      text.setFont(font.resourceName, run.fontSize);
+
+      for (const line of lines) {
+        const first = line[0];
+        if (!first) continue;
+
+        // The text matrix carries the baseline's origin, so the glyphs are
+        // positioned relative to it and the run reads as one string.
+        const items = buildPositionedRun(
+          line.map((glyph) => ({ text: glyph.text, x: glyph.x - first.x })),
+          0,
+          run.fontSize,
+          font.subset,
+        );
+        if (items.length === 0) continue;
+
+        const [a, b, c, d, e, f] = multiply(
+          [1, 0, 0, -1, first.x, first.y],
+          run.transform,
+        );
+
+        text.setTextMatrix(a, b, c, d, e, f).showTextArray(items);
+        drew = true;
+      }
+    });
+  });
+
+  return drew;
+}
+
+/** Group a run's characters into the baselines they sit on, in order. */
+function baselines(run: CapturedSvgText): CapturedSvgGlyph[][] {
+  if (run.glyphs.length === 0) {
+    return [[{ text: run.text, x: run.x, y: run.y }]];
+  }
+
+  const groups: CapturedSvgGlyph[][] = [];
+  let current: CapturedSvgGlyph[] = [];
+
+  for (const glyph of run.glyphs) {
+    const previous = current[current.length - 1];
+    if (previous && previous.y !== glyph.y) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(glyph);
+  }
+
+  if (current.length > 0) groups.push(current);
+  return groups;
 }
 
 /**
@@ -126,6 +229,21 @@ export function paintSvg(
       });
 
       painted += 1;
+    }
+
+    for (const run of svg.texts) {
+      if (!run.fill || run.opacity <= 0 || run.fontSize <= 0) continue;
+
+      const font = options.fontFor?.(run);
+      if (!font) continue;
+
+      group.scoped((scoped) => {
+        if (run.opacity < 1 && options.extGStateFor) {
+          scoped.setExtGState(options.extGStateFor(run.opacity));
+        }
+
+        if (paintTextRun(scoped, run, font)) painted += 1;
+      });
     }
   });
 

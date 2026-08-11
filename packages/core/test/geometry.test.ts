@@ -37,6 +37,16 @@ describe("resolvePageSize", () => {
     });
   });
 
+  it("takes an explicit size exactly as given", () => {
+    // A caller who writes the width and height has already said which way
+    // round the page is. Normalising to portrait regardless turned a request
+    // for a 400x320 page into a 320x400 one, and nothing said so.
+    expect(resolvePageSize({ width: "400px", height: "320px" })).toEqual({
+      width: 300,
+      height: 240,
+    });
+  });
+
   it("applies orientation to custom sizes too", () => {
     expect(resolvePageSize({ width: "5in", height: "10in" }, "landscape")).toEqual({
       width: 720,
