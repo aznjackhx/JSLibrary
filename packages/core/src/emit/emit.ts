@@ -342,13 +342,30 @@ function paintText(
 }
 
 /**
+ * Tolerance on the page boundary, in CSS pixels.
+ *
+ * Sub-pixel layout means a line that sits flush against the top of the content
+ * box can measure a hair either side of it, and engines disagree about which.
+ * Half a pixel is far below anything a reader could see and far above the
+ * fractions layout produces.
+ */
+const BAND_EPSILON = 0.5;
+
+/**
  * Which page owns a line.
  *
  * The top edge decides. Using the baseline instead would move a line to the
  * next page while its ascenders stayed on this one.
+ *
+ * Both comparisons are shifted by the same tolerance, so the bands still
+ * partition the document exactly: every line has one owner, and none is
+ * counted twice. Testing the raw edge instead loses any line that measures a
+ * fraction above the first page's top — which is how the heading of the corpus
+ * invoice disappeared on WebKit alone, where the two lines flush with y = 0
+ * were the only ones in the document at the boundary.
  */
 export function ownsLine(line: { rect: { y: number } }, band: PageBand): boolean {
-  return line.rect.y >= band.top && line.rect.y < band.bottom;
+  return line.rect.y >= band.top - BAND_EPSILON && line.rect.y < band.bottom - BAND_EPSILON;
 }
 
 export interface PageFurniture {
