@@ -89,6 +89,37 @@ export class BinaryReader {
     );
   }
 
+  // --- Random access -------------------------------------------------------
+  //
+  // Font tables are graphs of offsets, not streams: a lookup names a subtable
+  // which names a coverage table somewhere else entirely. Reading those
+  // sequentially means saving and restoring the cursor around every hop,
+  // which is noise at best and a misplaced cursor at worst.
+
+  /** Read a big-endian unsigned 16-bit value at an absolute offset. */
+  uint16At(at: number): number {
+    this.offset = at;
+    return this.uint16();
+  }
+
+  /** Read a big-endian signed 16-bit value at an absolute offset. */
+  int16At(at: number): number {
+    this.offset = at;
+    return this.int16();
+  }
+
+  /** Read a big-endian unsigned 32-bit value at an absolute offset. */
+  uint32At(at: number): number {
+    this.offset = at;
+    return this.uint32();
+  }
+
+  /** Read a four-character tag at an absolute offset. */
+  tagAt(at: number): string {
+    this.offset = at;
+    return this.tag();
+  }
+
   bytesOf(length: number): Uint8Array {
     const at = this.#require(length);
     return this.bytes.subarray(at, at + length);

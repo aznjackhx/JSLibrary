@@ -102,6 +102,36 @@ So a shaper for Arabic needs Unicode joining classes plus `GSUB` lookup types
 positioning work. **L, not XL.** Indic reordering is a separate and larger
 problem, and should be quoted separately rather than folded into this.
 
+**Started, and the first assumption was wrong.** Two pieces are built and
+tested:
+
+- **Joining behaviour** (`fonts/joining.ts`) — which form each letter takes
+  from its neighbours. Pure Unicode, no font involved: marks are transparent
+  so a vowel sign does not break the join beneath it, right-joining letters
+  end a run, and the zero-width joiner and non-joiner are honoured. Complete.
+- **A `GSUB` reader** (`fonts/gsub.ts`) for single substitution, ligatures and
+  the extension indirection, written to fall back to leaving a glyph untouched
+  rather than guessing.
+
+The scoping above assumed `init`, `medi` and `fina` would supply joining forms
+through single substitution. **For Noto Sans Arabic they do not.** Reading the
+table shows `init` and `medi` carry only eleven single substitutions between
+them, `fina` carries none at all, and the ordinary letter beh's initial,
+medial and final glyphs are reachable through none of them. The joining forms
+live in the multiple and chained-context lookups instead.
+
+That is asserted as a failing-by-design test rather than written down: the day
+the contextual lookups land, `gsub.test.ts` fails and has to be rewritten as
+the success it becomes.
+
+**So the remaining work is chained-context substitution (type 6), and it is
+the whole job rather than the finishing touch.** It was already known to be
+needed for `rlig`; what is new is that basic letter joining needs it too. The
+estimate stands at L, but none of it is optional — there is no useful
+half-way point that joins letters without it, which is why nothing is wired
+into rendering yet. Half-shaped Arabic would be a regression on honestly
+unshaped Arabic.
+
 **Interim — done.** Scripts needing shaping are detected and warned about, and
 the render continues. Decided deliberately in favour of warning over refusing:
 a mostly-Latin report with one Arabic word should still produce its PDF, and
