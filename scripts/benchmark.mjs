@@ -96,6 +96,10 @@ const DOCUMENTS = [
 const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
 const browser = await chromium.launch({
+  // Without this, usedJSHeapSize is bucketed and updated lazily: it reports
+  // the same 13 MB for a two-page document and a hundred-page one, which is
+  // the baseline heap rather than anything the render did.
+  args: ["--enable-precise-memory-info"],
   ...(process.env["PW_CHROMIUM_EXECUTABLE"]
     ? { executablePath: process.env["PW_CHROMIUM_EXECUTABLE"] }
     : {}),
@@ -113,21 +117,40 @@ try {
     const samples = [];
     let pages = 0;
     let bytes = 0;
+    let peakHeapMb = 0;
 
     for (let run = 0; run < RUNS; run += 1) {
       const result = await tab.evaluate(
         async ({ font }) => {
+          // Chromium-only, and that is fine for a number meant to answer
+          // "where does this fall over" rather than to be compared across
+          // engines. Sampled during the render, not after: the measured tree
+          // and the byte buffer are both released by the time it returns, so
+          // reading afterwards reports the floor rather than the peak.
+          const heap = () => performance.memory?.usedJSHeapSize ?? 0;
+          const baseline = heap();
+          let peak = baseline;
+          const poll = setInterval(() => {
+            peak = Math.max(peak, heap());
+          }, 25);
+
           const started = performance.now();
-          const pdf = await window.PkgCore.render(document.querySelector("#subject"), {
-            metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
-            fonts: [{ family: "B", data: new Uint8Array(font) }],
-          });
-          return { ms: performance.now() - started, bytes: pdf.byteLength };
+          try {
+            const pdf = await window.PkgCore.render(document.querySelector("#subject"), {
+              metadata: { creationDate: new Date("2024-01-01T00:00:00Z") },
+              fonts: [{ family: "B", data: new Uint8Array(font) }],
+            });
+            peak = Math.max(peak, heap());
+            return { ms: performance.now() - started, bytes: pdf.byteLength, peak: peak - baseline };
+          } finally {
+            clearInterval(poll);
+          }
         },
         { font: fontBytes },
       );
       samples.push(result.ms);
       bytes = result.bytes;
+      peakHeapMb = Math.max(peakHeapMb, Math.round(result.peak / 1024 / 1024));
     }
 
     // Page count from the output itself, so each row says what was actually
@@ -158,6 +181,7 @@ try {
       "median ms": Math.round(median(samples)),
       "ms/page": pages > 0 ? Math.round(median(samples) / pages) : "—",
       "KB": Math.round(bytes / 1024),
+      "heap MB over baseline": peakHeapMb,
     });
   }
 

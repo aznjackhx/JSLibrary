@@ -227,11 +227,11 @@ library. Real documents on real browsers, compared by eye, are still missing.
 `scripts/benchmark.mjs` renders the three documents this asked for and reports
 the median of five runs. On a CI-class container, not a laptop:
 
-| Document | Pages | Median | Per page | Output |
-| --- | --- | --- | --- | --- |
-| Long report, 1,200 justified paragraphs | 88 | 3.1 s | 36 ms | 132 KB |
-| 5,000-row table with a repeating header | 105 | 2.7 s | 25 ms | 298 KB |
-| Fifty SVG charts with labels | 2 | 39 ms | 20 ms | 7 KB |
+| Document | Pages | Median | Per page | Output | Peak heap |
+| --- | --- | --- | --- | --- | --- |
+| Long report, 1,200 justified paragraphs | 88 | 2.3 s | 26 ms | 132 KB | 65 MB |
+| 5,000-row table with a repeating header | 105 | 2.6 s | 25 ms | 298 KB | 103 MB |
+| Fifty SVG charts with labels | 2 | 47 ms | 23 ms | 7 KB | 8 MB |
 
 The brief's budget is fifty pages in under five seconds. Both long documents
 clear it with room to spare — roughly 30 ms a page against a 100 ms budget —
@@ -248,8 +248,7 @@ It is a script and not a test, deliberately. A timing threshold asserted in CI
 fails on a noisy runner for reasons that have nothing to do with the change
 under review, and a suite that cries wolf gets ignored.
 
-Still unmeasured: memory, which is item 12, and a document mixing all three at
-once.
+Still unmeasured: a document mixing all three at once.
 
 ### 10. Error handling and diagnostics — partly done
 
@@ -278,10 +277,27 @@ The two with the clearest demand are **PDF/UA tagged output** (anyone under an
 accessibility mandate, and it has a real deadline-driven buyer) and
 **AcroForm generation** (insurance, banking, HR).
 
-### 12. Memory behaviour on large documents — M
+### 12. Memory behaviour on large documents — ceiling documented
 
-Everything is held in memory: the measured tree, every image, the whole byte
-buffer. Find where that falls over and either fix it or document the ceiling.
+Measured alongside the timings, in the same script. Everything is held at once
+— the measured tree, every image, the whole byte buffer — and the cost is
+roughly **0.7 to 1 MB of heap per output page**, dominated by the measured
+tree rather than by the PDF being built: the 5,000-row table costs more per
+page than justified prose because it carries far more boxes.
+
+So the working ceiling is about **1,000 pages before a browser tab is in
+trouble**, and a tab that dies takes the render with it. That is the number to
+quote to anyone asking, and it is what makes the streaming writer a real Pro
+feature rather than a nice-to-have.
+
+The measurement needed `--enable-precise-memory-info`. Without it Chromium
+buckets `usedJSHeapSize` and reports the same 13 MB for a two-page document
+and a hundred-page one — a number that looks like an answer and is only the
+baseline heap. Worth knowing before anyone quotes a memory figure from a
+casual measurement.
+
+Not fixed, deliberately: fixing it means streaming, which is an architectural
+change and already scoped as a Pro feature.
 
 ---
 
