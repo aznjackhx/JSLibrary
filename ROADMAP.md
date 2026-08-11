@@ -84,12 +84,13 @@ expected-failure annotation is removed.
 
 ### 1. Finish the fixture corpus — M
 
-Six documents exist: invoice, nested tables, Hebrew, Arabic, Japanese, and a
+Seven documents exist: invoice, nested tables, Hebrew, Arabic, Japanese, a
 thirty-page report in proportional type with running headers and page counters
-— which closed two of the four gaps below and found the missing-heading bug on
-its first run. Still missing:
+— which found the missing-heading bug on its first run — and images at three
+densities with an alpha channel, which found nothing: source pixels and soft
+masks both survive, and the output was checked against the browser by eye
+before the assertions were written. Still missing:
 
-- Images at several DPIs, including one with transparency
 - A dashboard: several charts, legends and axis labels on one page — blocked in
   part on SVG text (#4), which would leave the charts unlabelled today
 

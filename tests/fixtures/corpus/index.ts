@@ -14,6 +14,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { checkerboard, fadingDisc, pngDataUrl } from "./png.js";
+
 const FONT_DIR = resolve(import.meta.dirname, "../fonts");
 
 /** A font a corpus document needs, as bytes plus the family it is served as. */
@@ -56,6 +58,23 @@ export interface CorpusDocument {
    * nothing else here would notice.
    */
   readonly minPages?: number;
+  /**
+   * How many image XObjects the PDF must paint.
+   *
+   * Defaults to none, which is the assertion that matters most here: an image
+   * in a document that has none is text that got turned into pixels. Where a
+   * document does carry images the exact count is asserted, so a dropped image
+   * fails just as loudly as a rasterised paragraph.
+   */
+  readonly expectedImages?: number;
+  /**
+   * Pixel widths of every image the PDF embeds, sorted, soft masks included.
+   *
+   * This is what stops a retina asset being flattened to its display size:
+   * a 256px image drawn at 64px must keep 256 pixels or the print is soft,
+   * and nothing about the rendered page would reveal the loss.
+   */
+  readonly imageWidths?: readonly number[];
   /**
    * A gap this document is known to expose, as a sentence.
    *
@@ -412,6 +431,64 @@ const report: CorpusDocument = {
   }),
 };
 
+/**
+ * Images: several densities, and one with an alpha channel.
+ *
+ * The density cases are the ones that matter for a print target. An image
+ * drawn smaller than its pixels is what a retina asset does, and the PDF must
+ * keep the pixels rather than the display size or the print is soft. An image
+ * drawn larger is the opposite mistake and must not be silently upsampled.
+ *
+ * The transparent one sits on a coloured panel, so a soft mask that is ignored
+ * or inverted is obvious rather than subtle.
+ */
+const images: CorpusDocument = {
+  name: "images",
+  purpose: "raster images at three densities, one of them with transparency",
+  fonts: [MONO],
+  expectedImages: 4,
+  // Three checkerboards at their source sizes, and the disc twice over: once
+  // as colour and once as the soft mask carrying its alpha.
+  imageWidths: [16, 64, 96, 96, 256],
+  html: page({
+    fonts: [MONO],
+    css: `
+  #subject { font-family: "Corpus Mono", monospace; font-size: 10pt; color: rgb(24,24,27); }
+  h2 { font-size: 13pt; margin: 0 0 12px; }
+  figure { margin: 0 0 18px; }
+  figcaption { font-size: 8pt; color: rgb(113,113,122); margin-top: 4px; }
+  .panel { background: rgb(30,64,175); padding: 12px; display: inline-block; }
+  .row { display: flex; gap: 16px; align-items: flex-start; }`,
+    body: `    <h2>Image density</h2>
+    <div class="row">
+      <figure>
+        <img src="${pngDataUrl(64, 64, checkerboard(8, [244, 244, 245], [24, 24, 27]))}"
+             width="64" height="64" alt="64px checkerboard at its own size">
+        <figcaption>64px source, drawn at 64px</figcaption>
+      </figure>
+      <figure>
+        <img src="${pngDataUrl(256, 256, checkerboard(32, [219, 234, 254], [30, 64, 175]))}"
+             width="64" height="64" alt="256px checkerboard drawn small">
+        <figcaption>256px source, drawn at 64px</figcaption>
+      </figure>
+      <figure>
+        <img src="${pngDataUrl(16, 16, checkerboard(2, [254, 226, 226], [153, 27, 27]))}"
+             width="64" height="64" alt="16px checkerboard drawn large">
+        <figcaption>16px source, drawn at 64px</figcaption>
+      </figure>
+    </div>
+
+    <h2>Transparency</h2>
+    <figure>
+      <span class="panel">
+        <img src="${pngDataUrl(96, 96, fadingDisc(96, [255, 255, 255]))}"
+             width="96" height="96" alt="White disc fading to transparent">
+      </span>
+      <figcaption>Alpha channel over a solid panel</figcaption>
+    </figure>`,
+  }),
+};
+
 export const CORPUS: readonly CorpusDocument[] = [
   invoice,
   tables,
@@ -419,4 +496,5 @@ export const CORPUS: readonly CorpusDocument[] = [
   arabic,
   japanese,
   report,
+  images,
 ];

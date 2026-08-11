@@ -167,11 +167,26 @@ for (const document_ of CORPUS) {
       expect(extracted).toBe(expected);
     });
 
-    test("never rasterises text", async ({ page }) => {
-      // None of these documents contains an image, so any image XObject is
-      // text that got turned into pixels.
-      const result = await extract(await renderDocument(page, document_));
-      expect(result.images).toBe(0);
+    test("paints images, and only images, as pixels", async ({ page }) => {
+      // For a document with no images, any image XObject is text that got
+      // turned into pixels — the failure this library exists to avoid. For a
+      // document that has them, the exact count also catches one being
+      // dropped, which nothing else here would notice.
+      const bytes = await renderDocument(page, document_);
+      const result = await extract(bytes);
+      expect(result.images).toBe(document_.expectedImages ?? 0);
+
+      if (!document_.imageWidths) return;
+
+      // Read straight from the image dictionaries. They are written
+      // uncompressed by this library's own writer, which is what makes a
+      // regex defensible here — it is reading our output, not parsing PDF in
+      // general.
+      const widths = [...Buffer.from(bytes).toString("latin1").matchAll(/\/Width (\d+)/g)]
+        .map((match) => Number(match[1]))
+        .sort((a, b) => a - b);
+
+      expect(widths).toEqual([...document_.imageWidths].sort((a, b) => a - b));
     });
 
     test("is deterministic", async ({ page }) => {
