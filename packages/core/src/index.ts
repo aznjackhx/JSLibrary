@@ -10,6 +10,7 @@ import { destination } from "./emit/links.js";
 import { buildOutlineTree, collectHeadings, writeOutline } from "./emit/outline.js";
 import { paintPagedDocument } from "./emit/pages.js";
 import { NotImplementedError, RenderError } from "./errors.js";
+import { describeFace, FontError } from "./errors.js";
 import { Font } from "./fonts/font.js";
 import { FontRegistry, type FontStyle } from "./fonts/resolve.js";
 import { measure } from "./measure/index.js";
@@ -25,7 +26,7 @@ import { PdfDocument } from "./pdf/document.js";
 import { PdfDict, textString, type PdfValue } from "./pdf/objects.js";
 import { ptToPx } from "./units.js";
 
-export { RenderError, NotImplementedError } from "./errors.js";
+export { RenderError, NotImplementedError, FontError } from "./errors.js";
 export { resolveOptions } from "./options.js";
 export type {
   DocumentMetadata,
@@ -267,12 +268,20 @@ function buildRegistry(fonts: RenderOptions["fonts"]): FontRegistry {
   }
 
   for (const font of fonts) {
-    registry.register({
-      family: font.family,
-      weight: font.weight ?? 400,
-      style: (font.style ?? "normal") as FontStyle,
-      font: Font.parse(font.data),
-    });
+    const weight = font.weight ?? 400;
+    const style = (font.style ?? "normal") as FontStyle;
+
+    // Parsing is the step that fails on a caller's mistake — the wrong file,
+    // a compressed one, a fetch that returned an error page — and the parser
+    // knows nothing about which face it was handed.
+    let parsed;
+    try {
+      parsed = Font.parse(font.data);
+    } catch (cause) {
+      throw new FontError(describeFace(font.family, weight, style), cause);
+    }
+
+    registry.register({ family: font.family, weight, style, font: parsed });
   }
 
   return registry;

@@ -7,6 +7,7 @@
  * any explicit z-handling.
  */
 
+import { FontError } from "../errors.js";
 import { embedFontSubset } from "../fonts/embed.js";
 import type { Font, FontSubset } from "../fonts/font.js";
 import type { FontRegistry } from "../fonts/resolve.js";
@@ -143,7 +144,20 @@ export class EmissionContext {
 
     for (const [font, subset] of this.#subsets) {
       if (subset.glyphCount <= 1) continue; // Nothing but .notdef was used.
-      const embedded = embedFontSubset(this.document, font, subset.build());
+
+      // Subsetting fails on outline formats this cannot cut down, and it
+      // happens here — at the end of the whole render, far from the call that
+      // supplied the font. Without the face's name the message says only that
+      // some font could not be subset, in a document that may use a dozen.
+      let embedded;
+      try {
+        embedded = embedFontSubset(this.document, font, subset.build());
+      } catch (cause) {
+        // Only the name inside the file is known here; the family the
+        // caller declared is not carried this far.
+        throw new FontError(font.postScriptName, cause);
+      }
+
       this.#fontRefs.set(font, embedded.ref);
     }
 

@@ -228,11 +228,25 @@ The 50-page budget was measured on a synthetic fixture of repeated paragraphs.
 Measure a 200-page report, a 5,000-row table, and a page with fifty SVG charts.
 Publish the numbers.
 
-### 10. Error handling and diagnostics — M
+### 10. Error handling and diagnostics — partly done
 
-Today a malformed font throws a bare `Error`. A paying customer needs to know
-which font, which element, and what to do about it. Audit every throw for a
-message that names the input and the fix.
+Audited every `throw` in the core. Most already named their input — page sizes,
+margins, lengths, PDF object errors all quote the offending value. The gap was
+the one that matters commercially: a font the caller supplied failed with a
+message about bytes and no indication of *which* font, in a document that may
+pass a dozen faces.
+
+Font failures now carry the face. `FontError` names the family and weight the
+caller declared, keeps the original reason as its message and its `cause`, and
+says what to check — the common real cause being a WOFF2 file, a truncated
+response, or an error page fetched instead of the font. Subsetting failures,
+which happen at the end of the render far from the call that supplied the font,
+carry the name from inside the file, since the declared family is not carried
+that far and inventing one would send the reader to the wrong file.
+
+Still to do: name the *element* as well as the input, which needs the measured
+tree to carry a source reference; and audit the `@pkg/pro` throws, which this
+pass did not cover.
 
 ### 11. A second Pro feature — L
 
