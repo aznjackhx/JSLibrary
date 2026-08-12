@@ -109,16 +109,23 @@ tested:
   from its neighbours. Pure Unicode, no font involved: marks are transparent
   so a vowel sign does not break the join beneath it, right-joining letters
   end a run, and the zero-width joiner and non-joiner are honoured. Complete.
-- **A `GSUB` reader** (`fonts/gsub.ts`) for single substitution, ligatures and
-  the extension indirection, written to fall back to leaving a glyph untouched
-  rather than guessing.
+- **A `GSUB` reader** (`fonts/gsub.ts`) for single, multiple and ligature
+  substitution plus the extension indirection, written to fall back to leaving
+  a glyph untouched rather than guessing. One-glyph multiple substitutions are
+  taken as single substitutions, since fonts use them that way; longer
+  sequences are left alone rather than truncated, which would silently drop
+  marks.
 
 The scoping above assumed `init`, `medi` and `fina` would supply joining forms
-through single substitution. **For Noto Sans Arabic they do not.** Reading the
-table shows `init` and `medi` carry only eleven single substitutions between
-them, `fina` carries none at all, and the ordinary letter beh's initial,
-medial and final glyphs are reachable through none of them. The joining forms
-live in the multiple and chained-context lookups instead.
+through single substitution. **For Noto Sans Arabic they do not.** Reading
+single and multiple substitution together yields 31, 31 and 33 forms under
+`init`, `medi` and `fina` — a fraction of an Arabic font's letters, and the
+ordinary letter beh's initial, medial and final glyphs are not among them.
+
+(The first version of this note said eleven and none, from reading single
+substitution alone. Adding multiple substitution raised the counts and made
+`fina` appear at all, which is a real gain — and left the conclusion exactly
+where it was.)
 
 That is asserted as a failing-by-design test rather than written down: the day
 the contextual lookups land, `gsub.test.ts` fails and has to be rewritten as

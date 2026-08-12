@@ -196,10 +196,38 @@ export class GlyphSubstitutions {
     single: Map<number, number>,
   ): void {
     if (type === 1) this.#readSingle(reader, subTable, single);
+    else if (type === 2) this.#readMultiple(reader, subTable, single);
     else if (type === 4) this.#readLigatures(reader, subTable);
-    // Types 2, 3, 5 and 6 are read as nothing rather than wrongly. A
-    // multiple or contextual substitution this skips leaves the glyph as it
-    // was, which is the same output as before shaping existed.
+    // Types 3, 5 and 6 are read as nothing rather than wrongly. A contextual
+    // substitution this skips leaves the glyph as it was, which is the same
+    // output as before shaping existed.
+  }
+
+  /**
+   * Multiple substitution: one glyph becomes a sequence.
+   *
+   * Only sequences of exactly one are taken. A one-glyph sequence is a single
+   * substitution written differently, and fonts do use it that way under the
+   * joining features. Longer sequences genuinely produce several glyphs from
+   * one, which the caller here has no way to represent — a cluster maps to one
+   * position — so those are left alone rather than truncated to their first
+   * glyph, which would silently drop marks.
+   */
+  #readMultiple(reader: BinaryReader, subTable: number, single: Map<number, number>): void {
+    if (reader.uint16At(subTable) !== 1) return;
+
+    const coverage = this.#coverage(reader, subTable + reader.uint16At(subTable + 2));
+    const sequenceCount = reader.uint16At(subTable + 4);
+
+    for (let index = 0; index < sequenceCount && index < coverage.length; index += 1) {
+      const glyph = coverage[index];
+      if (glyph === undefined) continue;
+
+      const sequence = subTable + reader.uint16At(subTable + 6 + index * 2);
+      if (reader.uint16At(sequence) !== 1) continue;
+
+      single.set(glyph, reader.uint16At(sequence + 2));
+    }
   }
 
   #readSingle(reader: BinaryReader, subTable: number, single: Map<number, number>): void {
