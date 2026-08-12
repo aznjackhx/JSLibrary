@@ -109,9 +109,13 @@ drawing stays sharp at any zoom and costs a few hundred bytes.
 | `viewBox` and `preserveAspectRatio`, including `slice` and `none` | Supported |
 | Fill and stroke colour, `fill-rule`, width, cap, join, dashes, opacity | Supported |
 | Styling from CSS rules, presentation attributes or inheritance | Supported: computed style is what is read |
-| Gradients and patterns (`fill="url(#id)"`) | Not supported: the shape is left unpainted rather than filled with a wrong flat colour |
-| `text` inside SVG | Not supported |
-| `use`, `clipPath`, `mask`, filters | Not supported: they draw nothing rather than something wrong |
+| Linear and radial gradients, in either units, with `gradientTransform` and `href` inheritance | Supported: emitted as PDF shadings, one per distinct gradient |
+| `text` and `tspan` | Supported: real, selectable text, positioned by the browser so `text-anchor`, `dx`/`dy` and `textLength` all hold |
+| `use` | Supported, including a `symbol` or `g` in `defs`, with cycle protection |
+| `spreadMethod` other than `pad` | Degrades to `pad` |
+| Gradient stop opacity | Paints at full strength: honouring it needs a luminosity soft mask |
+| `pattern` fills | Not supported: the shape is left unpainted rather than filled with a wrong flat colour |
+| `clipPath`, `mask`, filters, `textPath`, per-character `rotate` | Not supported: they draw nothing rather than something wrong |
 
 Quadratic curves are converted to cubics exactly. Arcs have no exact Bézier
 form and are split into segments of at most 90°, which is the standard
@@ -177,8 +181,19 @@ instead:
 
 Deliberate, and each one is a decision rather than an oversight:
 
-- **A table row taller than a page overflows** instead of splitting across
-  pages. Moving a whole row is implemented; dividing one is not.
+- **No text shaping.** Arabic, Persian, Urdu and Indic scripts render with
+  isolated letter forms — wrong rather than merely imperfect, because glyphs
+  are looked up through the font's `cmap` alone. The renderer detects these
+  scripts and warns, naming the script and the symptom, rather than producing
+  unreadable output silently.
+- **WOFF2 is rejected.** Decoding it needs a Brotli decompressor and the
+  reversal of WOFF2's transformed glyph encoding. Supply TTF, OTF or WOFF —
+  the error names the conversion command.
+- **CFF outlines cannot be subset**, so a font with PostScript outlines fails
+  rather than embedding whole.
+- **Memory is roughly 0.7–1 MB per output page**, with the measured tree, every
+  image and the whole byte buffer held at once. The practical ceiling is around
+  a thousand pages.
 - **Named pages** (`@page cover` with `page: cover`) are parsed and ignored.
   Margin-box sizing is equal thirds of each edge rather than the
   specification's content-based sizing, and counters other than `page` and
