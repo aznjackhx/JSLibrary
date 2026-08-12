@@ -181,6 +181,24 @@ fetch and their brand font simply works, which is the promise worth keeping.
 The alternative — requiring callers to decompress — keeps the core smaller but
 pushes real work onto every customer with a WOFF2 brand font.
 
+**Two things surveyed before starting, both of which shape the work.**
+
+*The decoder choice is a CSP decision, not a size one.* The two candidates on
+npm are a WASM decoder at 247 KB unpacked and a pure-JS one at 1.5 MB. WASM is
+far smaller and the obvious pick on size alone — but instantiating it needs
+`script-src 'wasm-unsafe-eval'`, and this library's standing constraint is that
+it passes a strict CSP. An enterprise that rejects the library for making
+outbound requests will reject it for widening its CSP too. So **pure JS**,
+unless a customer explicitly permits WASM, and the lazy chunk is what makes
+that affordable. Worth stating plainly because the sizes point the other way.
+
+*Decompression is not the whole job.* WOFF2 does not simply Brotli the tables:
+its directory uses variable-length integers with a known-tag table, and `glyf`
+and `loca` are stored in a *transformed* encoding — triplet-coded coordinates,
+separate flag and bounding-box streams — that has to be reversed into real
+TrueType tables. That reconstruction is the larger half and is why this is an
+L rather than an afternoon's dependency work.
+
 **Done when:** a WOFF2 brand font renders, and the size budget still holds for
 callers who do not use one.
 
