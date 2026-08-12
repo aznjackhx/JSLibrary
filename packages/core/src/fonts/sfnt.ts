@@ -57,9 +57,10 @@ const WOFF2 = 0x774f4632; // 'wOF2'
  * Parse a font file into its table directory.
  *
  * Accepts TrueType, OpenType and WOFF 1. WOFF 2 is rejected rather than
- * silently mishandled: its tables are Brotli-compressed, and a Brotli decoder
- * is larger than the entire bundle budget. Convert to TTF/OTF/WOFF before
- * passing it in.
+ * silently mishandled: its tables are Brotli-compressed and its outlines are
+ * stored in a transformed encoding, neither of which this reads yet. Support
+ * is planned through a lazily-loaded chunk so the core budget is unaffected;
+ * until then, converting the font is a one-line job for the caller.
  */
 export function parseSfnt(bytes: Uint8Array): SfntFont {
   if (bytes.length < 12) {
@@ -73,9 +74,11 @@ export function parseSfnt(bytes: Uint8Array): SfntFont {
       return parseWoff(bytes);
     case WOFF2:
       throw new Error(
-        "WOFF2 is not supported: decoding it requires a Brotli decompressor, which is " +
-          "larger than this library's entire bundle budget. Supply the same font as " +
-          "TTF, OTF or WOFF instead.",
+        "WOFF2 is not supported yet: decoding it needs a Brotli decompressor and the " +
+          "reversal of WOFF2's transformed glyph encoding, neither of which this " +
+          "library carries today. Supply the same font as TTF, OTF or WOFF instead — " +
+          "`fonttools ttLib.woff2 decompress <file>` converts one, and most foundries " +
+          "ship a TTF or OTF alongside the web build.",
       );
     case TTCF:
       throw new Error(

@@ -35,7 +35,11 @@ describe("container parsing", () => {
     const woff2 = new Uint8Array(32);
     // 'wOF2'
     woff2.set([0x77, 0x4f, 0x46, 0x32], 0);
-    expect(() => parseSfnt(woff2)).toThrow(/WOFF2 is not supported/);
+    // The message has to say what to do, not only what went wrong: a caller
+    // holding a WOFF2 brand font needs the way out in the error itself.
+    expect(() => parseSfnt(woff2)).toThrow(/WOFF2 is not supported yet/);
+    expect(() => parseSfnt(woff2)).toThrow(/TTF, OTF or WOFF/);
+    expect(() => parseSfnt(woff2)).toThrow(/fonttools/);
     expect(() => parseSfnt(woff2)).toThrow(/TTF, OTF or WOFF/);
   });
 
